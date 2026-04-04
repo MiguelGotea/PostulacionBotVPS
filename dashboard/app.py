@@ -16,12 +16,14 @@ app = FastAPI(title="Katty Jobs Dashboard")
 app.mount("/static", StaticFiles(directory="dashboard/static"), name="static")
 templates = Jinja2Templates(directory="dashboard/templates")
 
-# La conexión se manejará directamente en cada ruta para evitar problemas de hilos con aiosqlite
+# Nota: La conexión se maneja directamente en cada ruta para evitar problemas 
+# de hilos/threading con aiosqlite (RuntimeError: threads can only be started once)
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request, site: str = None):
     """Página principal con ofertas nuevas."""
-    async with await get_db() as db:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
         query = "SELECT * FROM jobs WHERE status = 'new'"
         params = []
         
@@ -35,7 +37,8 @@ async def index(request: Request, site: str = None):
             
         # Estadísticas rápidas
         async with db.execute("SELECT COUNT(*) FROM jobs WHERE status = 'new'") as cursor:
-            total_new = (await cursor.fetchone())[0]
+            row = await cursor.fetchone()
+            total_new = row[0] if row else 0
 
     return templates.TemplateResponse("index.html", {
         "request": request, 
@@ -47,7 +50,8 @@ async def index(request: Request, site: str = None):
 @app.get("/applied", response_class=HTMLResponse)
 async def applied(request: Request):
     """Historial de postulaciones."""
-    async with await get_db() as db:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
         async with db.execute("""
             SELECT * FROM jobs 
             WHERE status IN ('applied', 'failed') 
@@ -60,7 +64,8 @@ async def applied(request: Request):
 @app.get("/settings", response_class=HTMLResponse)
 async def settings(request: Request):
     """Configuración y estadísticas por sitio."""
-    async with await get_db() as db:
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
         async with db.execute("""
             SELECT site, 
                    COUNT(*) as total, 
@@ -79,7 +84,7 @@ async def settings(request: Request):
 @app.post("/ignore/{job_id}")
 async def ignore_job(job_id: int):
     """Marca una oferta como ignorada."""
-    async with await get_db() as db:
+    async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("UPDATE jobs SET status = 'ignored' WHERE id = ?", (job_id,))
         await db.commit()
     return RedirectResponse(url="/", status_code=303)
@@ -87,9 +92,7 @@ async def ignore_job(job_id: int):
 @app.post("/apply/{job_id}")
 async def force_apply(job_id: int):
     """Fuerza la postulación de una oferta específica."""
-    # En una implementación real, dispararíamos el poster aquí
-    # Por ahora simplemente marcamos como pendiente o forzamos status
-    async with await get_db() as db:
+    async with aiosqlite.connect(DB_PATH) as db:
         await db.execute("UPDATE jobs SET status = 'applying' WHERE id = ?", (job_id,))
         await db.commit()
     return RedirectResponse(url="/", status_code=303)
@@ -97,11 +100,13 @@ async def force_apply(job_id: int):
 @app.get("/api/stats")
 async def get_stats():
     """Retorna estadísticas en JSON."""
-    async with await get_db() as db:
+    async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT COUNT(*) FROM jobs WHERE status = 'applied'") as cursor:
-            total_applied = (await cursor.fetchone())[0]
+            row = await cursor.fetchone()
+            total_applied = row[0] if row else 0
         async with db.execute("SELECT COUNT(*) FROM jobs WHERE status = 'new'") as cursor:
-            total_new = (await cursor.fetchone())[0]
+            row = await cursor.fetchone()
+            total_new = row[0] if row else 0
             
     return {
         "total_applied": total_applied,
