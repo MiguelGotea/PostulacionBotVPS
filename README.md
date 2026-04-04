@@ -1,27 +1,133 @@
-# Katty Jobs — Sistema de Monitoreo y Postulación de Empleos
+# 🤖 Katty Jobs — Sistema Automatizado de Búsqueda y Postulación de Empleos
 
-Sistema automatizado de búsqueda y postulación de ofertas de trabajo en Nicaragua. Diseñado para correr en un VPS de DigitalOcean con Ubuntu 24.04.
+Sistema inteligente de automatización de búsqueda y postulación de ofertas laborales en portales de Nicaragua. Diseñado para correr 24/7 en un VPS de DigitalOcean con Ubuntu, gestionado con PM2, y con despliegue continuo via GitHub Actions.
 
-## Estructura del Proyecto
+> **Candidata:** Katty Valentina Coleman  
+> **VPS:** `198.211.97.243:8765`  
+> **Repositorio:** `https://github.com/MiguelGotea/PostulacionBotVPS`
 
-- `scrapers/`: Lógica de extracción de ofertas (Playwright).
-- `poster/`: Lógica de postulación automática de ofertas.
-- `dashboard/`: Interfaz web (FastAPI + Jinja2) para gestión.
-- `data/`: Base de datos SQLite.
-- `logs/`: Historial de ejecuciones y errores.
+---
 
-## Requisitos en el Host (VPS)
+## 🗂️ Estructura del Proyecto
 
-1. **Python 3.12+**
-2. **PM2** (instalado globalmente con npm)
-3. **Playwright Chromium**
+```
+PostulacionBotVPS/
+├── main.py                  # Punto de entrada del sistema
+├── scheduler.py             # Orquestador de ciclos de escaneo y postulación
+├── db.py                    # Inicialización y esquema de la base de datos SQLite
+├── notifier.py              # Envío de resúmenes por correo (Gmail SMTP)
+├── config.py                # Credenciales, keywords, parámetros (NO se sube a GitHub)
+├── requirements.txt         # Dependencias Python
+├── ecosystem.config.js      # Configuración de PM2
+├── gitpush.ps1              # Script PowerShell de despliegue rápido (Windows)
+│
+├── scrapers/                # Módulos de búsqueda de empleos (Playwright)
+│   ├── base.py              # Clase base con lógica compartida de scraping
+│   ├── tecoloco.py          # Scraper de Tecoloco.com.ni
+│   ├── computrabajo.py      # Scraper de Computrabajo.com.ni
+│   ├── opcionempleo.py      # Scraper de OpcionEmpleo.com.ni
+│   ├── acciontrabajo.py     # Scraper de AccionTrabajo.com
+│   ├── encuentra24.py       # Scraper de Encuentra24.com
+│   └── linkedin.py          # Scraper de LinkedIn
+│
+├── poster/                  # Módulos de postulación automática (Playwright)
+│   ├── base.py              # Clase base con login, apply y mark_applied
+│   ├── tecoloco.py          # Flujo completo: Login orgánico + Cuestionario
+│   ├── computrabajo.py      # Postulación en Computrabajo
+│   ├── opcionempleo.py      # Postulación en OpcionEmpleo
+│   └── acciontrabajo.py     # Postulación en Acciontrabajo
+│
+├── dashboard/               # Interfaz Web (FastAPI + Jinja2)
+│   ├── app.py               # Rutas del Dashboard
+│   ├── templates/           # Plantillas HTML (Nuevas Ofertas, Postuladas, Config)
+│   └── static/              # CSS, JS del Dashboard
+│
+├── data/
+│   └── jobs.db              # Base de datos SQLite (No en GitHub)
+│
+└── logs/                    # Logs de PM2 (No en GitHub)
+```
 
-## Instalación desde Cero
+---
+
+## ✨ Funcionalidades
+
+### 🔍 Búsqueda Automática
+- Escanea múltiples portales de empleo en Nicaragua cada **1 hora**.
+- Filtra por keywords configurables: `administración`, `atención al cliente`, `ventas`, etc.
+- Solo guarda **ofertas individuales** con ID numérico. Ignora categorías y listas.
+- Detecta y evita duplicar ofertas ya guardadas.
+
+### 🤖 Postulación Automática
+- Flujo de **Navegación Orgánica**: entra primero a la oferta y deja que el sitio pida login, evitando detección de bots.
+- Soporte completo del **Cuestionario de Tecoloco**: responde automáticamente salario esperado y estado laboral.
+- Camuflaje activo: **User-Agent real + Viewport aleatorio** para parecer un navegador humano.
+- Supera la protección **Akamai Bot Manager** de Tecoloco con paciencia adaptativa (hasta 90 segundos de espera en la "sala de espera" de Akamai).
+
+### 📊 Dashboard Web (`http://IP:8765`)
+- **Nuevas Ofertas**: Lista de empleos encontrados con filtro por portal.
+- **Postuladas**: Historial de postulaciones con estado (`applied` / `failed`) y mensaje de error detallado.
+- **Configuración**:
+  - Habilitar/deshabilitar cada portal individualmente.
+  - **Escanear ahora**: Disparar un escaneo manual de un portal específico sin interrumpir el ciclo automático.
+  - **Parámetros de Tecoloco**: Configurar expectativa salarial y estado laboral desde el Dashboard.
+  - **Limpiar Ofertas Inválidas**: Purga links de categorías que el bot pudo haber guardado por error.
+- Todas las fechas se muestran en **hora de Managua (UTC-6)**.
+
+### 📧 Notificaciones por Correo
+- Envía un resumen diario por Gmail con las postulaciones exitosas y las que requieren atención manual.
+
+---
+
+## ⚙️ Configuración (`config.py`)
+
+> ⚠️ **Este archivo NUNCA se sube a GitHub.** Está en `.gitignore`.
+
+```python
+KEYWORDS = ["administración", "atención al cliente", "ventas", ...]
+LOCATION = "Managua, Nicaragua"
+
+CREDENTIALS = {
+    "tecoloco":     {"email": "...", "password": "..."},
+    "computrabajo": {"email": "...", "password": "..."},
+    "opcionempleo": {"email": "...", "password": "..."},
+    # ...
+}
+
+EMAIL_CONFIG = {
+    "smtp_host": "smtp.gmail.com",
+    "smtp_port": 587,
+    "sender_email": "tu@gmail.com",
+    "sender_password": "APP_PASSWORD_GMAIL", # No la contraseña normal
+    "recipient_email": "candidata@gmail.com"
+}
+
+DASHBOARD_PORT = 8765
+SCAN_INTERVAL_HOURS = 1
+MAX_APPLICATIONS_PER_RUN = 10
+```
+
+---
+
+## 🗄️ Base de Datos (`data/jobs.db`)
+
+El sistema usa **SQLite** con 4 tablas:
+
+| Tabla | Descripción |
+|-------|-------------|
+| `jobs` | Todas las ofertas encontradas, su estado (`new`, `applied`, `failed`) y errores |
+| `scan_log` | Registro de cada ejecución de scraper (cuántas encontró, errores) |
+| `site_configs` | Estado activo/inactivo de cada portal (se edita desde el Dashboard) |
+| `app_settings` | Parámetros configurables: salario esperado (`tecoloco_salary`), estado laboral (`tecoloco_working`) |
+
+---
+
+## 🚀 Instalación desde Cero (VPS Ubuntu)
 
 ```bash
 # 1. Clonar el repositorio
-git clone https://github.com/MiguelGotea/PostulacionBotVPS.git
-cd PostulacionBotVPS
+git clone https://github.com/MiguelGotea/PostulacionBotVPS.git /root/katty-jobs
+cd /root/katty-jobs
 
 # 2. Crear entorno virtual e instalar dependencias
 python3 -m venv venv
@@ -31,28 +137,82 @@ pip install -r requirements.txt
 # 3. Instalar navegadores de Playwright
 playwright install chromium
 playwright install-deps chromium
-```
 
-## Configuración Obligatoria
+# 4. Crear config.py con tus datos reales (NO está en el repo)
+nano config.py
 
-1. Edita `config.py` con tus credenciales reales para Tecoloco, Computrabajo, etc.
-2. Configura los datos de Gmail (SMTP) para recibir los resúmenes.
+# 5. Inicializar la base de datos
+python3 db.py
 
-## Iniciar el Sistema con PM2
-
-```bash
+# 6. Arrancar con PM2
 pm2 start ecosystem.config.js
 pm2 save
 pm2 startup
 ```
 
-## Comandos Útiles
+---
 
-- `pm2 status`: Ver estado del bot.
-- `pm2 logs katty-jobs`: Ver actividad en tiempo real.
-- `pm2 restart katty-jobs`: Reiniciar después de cambios.
+## 🔄 Despliegue Automático (CI/CD)
 
-## Acceso al Dashboard
+El proyecto usa **GitHub Actions** (`.github/workflows/deploy.yml`) para despliegue continuo:
 
-El dashboard está disponible en `http://TU_IP_VPS:8765`.
-Ahí podrás ver las nuevas ofertas, el historial de postulaciones y la configuración de búsqueda.
+1. **Desde Windows:** Ejecutar `.\gitpush.ps1` en PowerShell.
+2. El script hace commit, push y sincroniza con GitHub.
+3. GitHub Actions conecta al VPS por SSH y ejecuta `git pull` + `pm2 restart`.
+
+```
+[Tu PC] → gitpush.ps1 → GitHub → Actions → VPS (SSH) → pm2 restart
+```
+
+**Secretos requeridos en GitHub** (`Settings > Secrets`):
+- `VPS_HOST`: IP del servidor DigitalOcean.
+- `VPS_USER`: `root`.
+- `SSH_PRIVATE_KEY`: Llave SSH privada para conectarse al VPS.
+
+---
+
+## 🖥️ Comandos Útiles en el VPS
+
+```bash
+# Ver estado del bot
+pm2 status
+
+# Ver logs en tiempo real
+pm2 logs katty-jobs
+
+# Reiniciar después de cambios manuales
+pm2 restart katty-jobs
+
+# Ver el dashboard desde el servidor
+curl http://localhost:8765
+```
+
+---
+
+## 🔐 Seguridad
+
+- `config.py` está en `.gitignore` y **NUNCA se sube a GitHub**.
+- Las credenciales de Gmail usan **App Password** de 2FA, no la contraseña principal.
+- El Dashboard no tiene autenticación (solo accesible desde la IP del VPS).
+
+---
+
+## 📈 Portales Soportados
+
+| Portal | Scraping | Postulación | Notas |
+|--------|----------|-------------|-------|
+| Tecoloco.com.ni | ✅ | ✅ | Flujo orgánico + Cuestionario automático con Akamai bypass |
+| Computrabajo.com.ni | ✅ | ✅ | |
+| OpcionEmpleo.com.ni | ✅ | ✅ | Búsqueda por URL directa |
+| AccionTrabajo.com | ✅ | ✅ | |
+| Encuentra24.com | ✅ | ⏳ | Solo scraping activo |
+| LinkedIn | ✅ | ⏳ | Solo scraping activo |
+
+---
+
+## 🗺️ Roadmap
+
+- [ ] Autenticación básica en el Dashboard
+- [ ] Soporte para más portales (Indeed, Glassdoor)
+- [ ] Notificaciones por Telegram además de email
+- [ ] Filtro por salario mínimo en las búsquedas

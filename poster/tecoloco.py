@@ -53,8 +53,13 @@ class TecolocoPoster(BasePoster):
             logger.error(f"[{self.site_name}] Error en login orgánico: {e}")
             return False
 
-    async def apply(self, page, job_url, credentials=None) -> bool:
-        """Postulación con flujo Humano: Oferta -> Login (si pide) -> Cuestionario."""
+    async def apply(self, page, job_url, credentials=None):
+        """Postulación con flujo Humano: Oferta -> Login (si pide) -> Cuestionario.
+        
+        Returns:
+            (True, None) si éxito
+            (False, str) si falla, con mensaje de error
+        """
         try:
             settings = await self.get_app_settings()
             logger.info(f"[{self.site_name}] Iniciando flujo humano para: {job_url}")
@@ -69,18 +74,24 @@ class TecolocoPoster(BasePoster):
                 # Comprobar si ya aplicamos
                 if await page.query_selector("text='Ya has aplicado'"):
                     logger.info(f"[{self.site_name}] Ya aplicado.")
-                    return True
+                    return True, None
                 
                 # Si estamos en login.aspx directo
                 if "login.aspx" in page.url.lower():
-                    await self.login_organic(page, credentials or CREDENTIALS['tecoloco'])
+                    login_ok = await self.login_organic(page, credentials or CREDENTIALS['tecoloco'])
+                    if not login_ok:
+                        return False, "Fallo de login (pre-apply)"
                     await asyncio.sleep(3)
                     # El login exitoso debería habernos devuelto a la oferta
-                    if "login.aspx" in page.url.lower(): # Si falló el retorno
-                         await page.goto(job_url, wait_until="load")
-                    apply_btn = await page.wait_for_selector(".btn-primary:has-text('APLICAR'), #btnAplicar", timeout=20000)
+                    if "login.aspx" in page.url.lower():  # Si falló el retorno
+                        await page.goto(job_url, wait_until="load")
+                    try:
+                        apply_btn = await page.wait_for_selector(".btn-primary:has-text('APLICAR'), #btnAplicar", timeout=20000)
+                    except Exception:
+                        return False, "Botón APLICAR no encontrado tras login"
                 else:
-                    return False
+                    current_url = page.url
+                    return False, f"Sin botón APLICAR y sin login.aspx. URL actual: {current_url}"
 
             # 2. Click en Aplicar
             await apply_btn.click()
@@ -88,40 +99,49 @@ class TecolocoPoster(BasePoster):
 
             # 3. Si redirige a Login tras el click
             if "login.aspx" in page.url.lower():
-                if not await self.login_organic(page, credentials or CREDENTIALS['tecoloco']):
-                    return False
+                login_ok = await self.login_organic(page, credentials or CREDENTIALS['tecoloco'])
+                if not login_ok:
+                    return False, "Fallo de login (post-apply click)"
                 await asyncio.sleep(3)
                 # Volver a buscar el botón si la redirección no fue automática
                 apply_btn = await page.query_selector(".btn-primary:has-text('APLICAR'), #btnAplicar")
-                if apply_btn: await apply_btn.click()
+                if apply_btn:
+                    await apply_btn.click()
+                    await asyncio.sleep(3)
 
-            # 4. Manejo de Cuestionario
-            questions_btn = await page.wait_for_selector("text='IR A PREGUNTAS', .btn-success", timeout=15000).catch(lambda e: None)
+            # 4. Manejo de Cuestionario (opcional — no falla si no hay)
+            try:
+                questions_btn = await page.wait_for_selector("text='IR A PREGUNTAS', .btn-success", timeout=15000)
+            except Exception:
+                questions_btn = None
+
             if questions_btn:
                 await questions_btn.click()
                 await asyncio.sleep(3)
 
-            # Rellenar
-            salary_input = await page.query_selector("input[type='number'], textarea[placeholder*='expectativa']")
-            if salary_input:
-                await salary_input.fill(settings['salary'])
+                # Rellenar salario
+                salary_input = await page.query_selector("input[type='number'], textarea[placeholder*='expectativa']")
+                if salary_input:
+                    await salary_input.fill(settings['salary'])
 
-            working_radio = await page.query_selector(f"text='{settings['working']}' >> .. >> input[type='radio']")
-            if working_radio: await working_radio.click()
+                # Rellenar estado laboral
+                working_radio = await page.query_selector(f"text='{settings['working']}' >> .. >> input[type='radio']")
+                if working_radio:
+                    await working_radio.click()
 
-            # Finalizar
+            # 5. Finalizar postulación
             final_btn = await page.query_selector("button:has-text('APLICAR'), .btn-primary:has-text('Finalizar')")
             if final_btn:
                 await final_btn.click()
                 await asyncio.sleep(3)
                 logger.info(f"[{self.site_name}] ¡Éxito en postulación orgánica!")
-                return True
+                return True, None
 
-            return False
+            return False, f"No se encontró botón final de envío. URL: {page.url}"
 
         except Exception as e:
-            logger.error(f"[{self.site_name}] Error en flujo humano de {self.site_name}: {e}")
-            return False
+            logger.error(f"[{self.site_name}] Error en flujo humano: {e}")
+            return False, f"Excepción: {str(e)}"
 
     async def login(self, page, credentials) -> bool:
         """Mantenemos compatibilidad con el scheduler viejo pero redirigimos al flujo orgánico."""

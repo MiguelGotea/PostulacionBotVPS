@@ -133,8 +133,13 @@ async def run_scan_cycle():
                 
                 try:
                     # Flujo Orgánico: apply se encarga del login si es necesario
-                    success = await poster.apply(page, job['url'], CREDENTIALS.get(site))
-                    await poster.mark_applied(job['id'], success)
+                    # Retorna (success: bool, error_msg: str | None)
+                    result = await poster.apply(page, job['url'], CREDENTIALS.get(site))
+                    if isinstance(result, tuple):
+                        success, error_msg = result
+                    else:
+                        success, error_msg = result, None  # retrocompatibilidad
+                    await poster.mark_applied(job['id'], success, error_msg)
                     if success:
                         applied_successfully.append(dict(job))
                 except Exception as e:
