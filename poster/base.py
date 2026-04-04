@@ -35,7 +35,7 @@ class BasePoster(abc.ABC):
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("""
                 UPDATE jobs 
-                SET status = ?, date_applied = CURRENT_TIMESTAMP, error_message = ? 
+                SET status = ?, date_applied = datetime('now', '-6 hours'), error_message = ? 
                 WHERE id = ?
             """, (status, error, job_id))
             await db.commit()
