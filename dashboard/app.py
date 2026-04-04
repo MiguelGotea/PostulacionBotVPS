@@ -16,11 +16,7 @@ app = FastAPI(title="Katty Jobs Dashboard")
 app.mount("/static", StaticFiles(directory="dashboard/static"), name="static")
 templates = Jinja2Templates(directory="dashboard/templates")
 
-# Helper para consultas DB
-async def get_db():
-    db = await aiosqlite.connect(DB_PATH)
-    db.row_factory = aiosqlite.Row
-    return db
+# La conexión se manejará directamente en cada ruta para evitar problemas de hilos con aiosqlite
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request, site: str = None):
