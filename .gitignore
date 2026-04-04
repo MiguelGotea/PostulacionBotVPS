@@ -1,0 +1,16 @@
+venv/
+data/*.db
+logs/*.log
+config.py
+__pycache__/
+*.pyc
+.env
+.idea/
+.vscode/
+node_modules/
+pip-log.txt
+pip-delete-this-directory.txt
+    
+# Playwright
+browser-snapshots/
+test-results/

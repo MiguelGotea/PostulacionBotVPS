@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block title %}Katty Jobs — Historial{% endblock %}
+
+{% block content %}
+<div class="content-header">
+    <h1>Historial de Postulaciones</h1>
+    <p>Revisa el estado de las postulaciones realizadas automáticamente.</p>
+</div>
+
+<div class="table-container">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Fecha Postulada</th>
+                <th>Puesto</th>
+                <th>Empresa</th>
+                <th>Sitio</th>
+                <th>Estado</th>
+                <th>Link</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for job in jobs %}
+            <tr>
+                <td>{{ job.date_applied }}</td>
+                <td>{{ job.title }}</td>
+                <td>{{ job.company }}</td>
+                <td><span class="site-badge badge-{{ job.site|lower }}">{{ job.site }}</span></td>
+                <td>
+                    <span class="status-badge status-{{ job.status|lower }}">
+                        {{ job.status|capitalize }}
+                    </span>
+                </td>
+                <td><a href="{{ job.url }}" target="_blank">Ver</a></td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="6" class="no-results">No se han realizado postulaciones todavía.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

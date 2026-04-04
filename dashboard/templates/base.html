@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Katty Jobs{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="sidebar">
+        <div class="sidebar-header">
+            <h2>Katty Jobs</h2>
+        </div>
+        <nav class="sidebar-nav">
+            <ul>
+                <li><a href="/" class="{% if request.url.path == '/' %}active{% endif %}">Nuevas Ofertas</a></li>
+                <li><a href="/applied" class="{% if request.url.path == '/applied' %}active{% endif %}">Postuladas</a></li>
+                <li><a href="/settings" class="{% if request.url.path == '/settings' %}active{% endif %}">Configuración</a></li>
+            </ul>
+        </nav>
+        <div class="sidebar-footer">
+            <p>Bots de Postulación Nicaragua</p>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <header class="top-bar">
+            <span>Control de Búsqueda y Automatización</span>
+            <div class="top-stats">
+              <span class="badge success">Vigo v1.2</span>
+            </div>
+        </header>
+        
+        <main class="page-container">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+</body>
+</html>

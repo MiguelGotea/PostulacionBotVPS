@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Katty Jobs — Configuración{% endblock %}
+
+{% block content %}
+<div class="content-header">
+    <h1>Configuración del Sistema</h1>
+    <p>Revisa los parámetros actuales y el estado de los scrapers.</p>
+</div>
+
+<div class="settings-grid">
+    <div class="settings-card">
+        <h3>Keywords de Búsqueda</h3>
+        <p>Listado de términos con los que se monitorea el mercado laboral en Nicaragua.</p>
+        <div class="keyword-tags">
+            {% for kw in keywords %}
+            <span class="tag">#{{ kw }}</span>
+            {% endfor %}
+        </div>
+    </div>
+
+    <div class="settings-card stats-summary">
+        <h3>Estadísticas por Sitio</h3>
+        <table class="simple-table">
+            <thead>
+                <tr>
+                    <th>Sitio</th>
+                    <th>Encontrados</th>
+                    <th>Postulados</th>
+                    <th>Manuales</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in stats %}
+                <tr>
+                    <td><span class="site-badge badge-{{ row.site|lower }}">{{ row.site }}</span></td>
+                    <td>{{ row.total }}</td>
+                    <td>{{ row.applied or 0 }}</td>
+                    <td>{{ row.manual or 0 }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="settings-card">
+        <h3>Acciones del Sistema</h3>
+        <p>Forzar escaneo o verificar conexión (se requiere PM2 activo).</p>
+        <div class="control-actions">
+            <button class="btn btn-primary" onclick="alert('Funcionalidad en desarrollo.')">Forzar Escaneo Ahora</button>
+            <p><small>Próximo escaneo programado: Automático cada 1 hora.</small></p>
+        </div>
+    </div>
+</div>
+{% endblock %}
