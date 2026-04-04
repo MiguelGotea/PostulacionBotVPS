@@ -17,6 +17,7 @@
                 <th>Empresa</th>
                 <th>Sitio</th>
                 <th>Estado</th>
+                <th>Error</th>
                 <th>Link</th>
             </tr>
         </thead>
@@ -32,11 +33,12 @@
                         {{ job.status|capitalize }}
                     </span>
                 </td>
+                <td class="error-cell">{{ job.error_message or '-' }}</td>
                 <td><a href="{{ job.url }}" target="_blank">Ver</a></td>
             </tr>
             {% else %}
             <tr>
-                <td colspan="6" class="no-results">No se han realizado postulaciones todavía.</td>
+                <td colspan="7" class="no-results">No se han realizado postulaciones todavía.</td>
             </tr>
             {% endfor %}
         </tbody>
