@@ -12,7 +12,6 @@ class TecolocoScraper(BaseScraper):
         self.base_url = "https://www.tecoloco.com.ni/"
 
     async def scrape(self, playwright) -> list[dict]:
-        """Implementación específica para Tecoloco."""
         all_jobs = []
         browser, context = await self.get_browser_context(playwright)
         page = await context.new_page()
@@ -30,36 +29,39 @@ class TecolocoScraper(BaseScraper):
                     await page.goto(search_url, wait_until="load")
                     await self.human_delay()
 
-                    # Extraer tarjetas de oferta (Selectores actualizados)
-                    job_cards = await page.query_selector_all(".job-result, .card, .job-item, .listing-card")
+                    # Extraer tarjetas de oferta (Selectores ultra-agresivos)
+                    job_cards = await page.query_selector_all(".job-result, .card, .job-item, .listing-card, [class*='job']")
                     
                     if not job_cards:
-                        # Reintento con selector de enlaces si fallan las tarjetas
-                        job_cards = await page.query_selector_all("a[href*='/ofertas-de-trabajo/'], a[href*='/empleos/']")
+                        # Reintento con cualquier link que parezca una oferta
+                        job_cards = await page.query_selector_all("a[href*='empleos/'], a[href*='ofertas-de-trabajo/']")
 
-                    for card in job_cards[:15]:
+                    for card in job_cards[:20]:
                         try:
-                            title_el = await card.query_selector("h2, .title, .job-title")
-                            title = await title_el.inner_text() if title_el else "Sin titulo"
+                            # Buscar el título principal
+                            title_el = await card.query_selector("h2, .title, .job-title, strong")
+                            title = await title_el.inner_text() if title_el else "Oferta de Empleo"
                             
+                            # Buscar el link
                             url = await card.get_attribute("href")
                             if not url:
-                                # Intentar buscar el link dentro de la tarjeta
                                 link_el = await card.query_selector("a")
                                 if link_el: url = await link_el.get_attribute("href")
 
                             if url and not url.startswith("http"):
                                 url = self.base_url.rstrip("/") + url
 
-                            job = {
-                                'title': title.strip(),
-                                'url': url,
-                                'site': self.site_name,
-                                'requires_manual': False
-                            }
-                            
-                            if url and "empleo" in url.lower():
-                                all_jobs.append(job)
+                            company_el = await card.query_selector(".company, .employer, [class*='empresa']")
+                            company = await company_el.inner_text() if company_el else "Confidencial"
+
+                            if url and ("empleo" in url.lower() or "oferta" in url.lower()):
+                                all_jobs.append({
+                                    'title': title.strip()[:100],
+                                    'company': company.strip()[:100],
+                                    'url': url,
+                                    'site': self.site_name,
+                                    'requires_manual': False
+                                })
                         except Exception as e:
                             logger.error(f"Error procesando tarjeta en {self.site_name}: {e}")
                             continue

@@ -27,25 +27,35 @@ class AcciontrabajoScraper(BaseScraper):
                     await page.goto(search_url, wait_until="domcontentloaded")
                     await self.human_delay()
 
-                    # Selectores de Acciontrabajo
-                    job_cards = await page.query_selector_all(".job-item, .listing-item, li.job")
+                    # Extraer tarjetas de oferta (Selectores ultra-agresivos)
+                    job_cards = await page.query_selector_all(".job-result, .card, .job-item, .listing-card, article")
                     
-                    for card in job_cards[:10]:
+                    if not job_cards:
+                        # Reintento con cualquier link que parezca una oferta
+                        job_cards = await page.query_selector_all("a[href*='empleos/'], a[href*='ofertas-de-trabajo/']")
+
+                    for card in job_cards[:20]:
                         try:
-                            title_el = await card.query_selector("h2 a, .title a, a.job-link")
-                            title = await title_el.inner_text() if title_el else "Sin título"
+                            # Buscar el título
+                            title_el = await card.query_selector("h2, .title, .job-title, strong")
+                            title = await title_el.inner_text() if title_el else "Oferta de Empleo"
                             
-                            url = await title_el.get_attribute("href") if title_el else None
+                            # Buscar el link
+                            url = await card.get_attribute("href")
+                            if not url:
+                                link_el = await card.query_selector("a")
+                                if link_el: url = await link_el.get_attribute("href")
+
                             if url and not url.startswith("http"):
                                 url = self.base_url.rstrip("/") + url
 
-                            company_el = await card.query_selector(".company, .employer")
+                            company_el = await card.query_selector(".company, .employer, [class*='empresa']")
                             company = await company_el.inner_text() if company_el else "Confidencial"
 
-                            if url:
+                            if url and ("empleos" in url.lower() or "ofertas" in url.lower()):
                                 all_jobs.append({
-                                    'title': title.strip(),
-                                    'company': company.strip(),
+                                    'title': title.strip()[:100],
+                                    'company': company.strip()[:100],
                                     'location': "Nicaragua",
                                     'url': url,
                                     'site': self.site_name,
