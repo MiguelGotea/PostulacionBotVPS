@@ -42,26 +42,33 @@ class TecolocoScraper(BaseScraper):
                             title_el = await card.query_selector("h2, .title, .job-title, strong")
                             title = await title_el.inner_text() if title_el else "Oferta de Empleo"
                             
-                            # Buscar el link
+                            # Buscar el link y Validar que sea una OFERTA real (contenga un ID numérico)
+                            import re
                             url = await card.get_attribute("href")
                             if not url:
                                 link_el = await card.query_selector("a")
                                 if link_el: url = await link_el.get_attribute("href")
 
-                            if url and not url.startswith("http"):
+                            if not url: continue
+                            
+                            # Filtro CRÍTICO: Debe contener un número de expediente o ID
+                            is_valid_job = bool(re.search(r'/\d+/', url))
+                            if not is_valid_job:
+                                continue
+
+                            if not url.startswith("http"):
                                 url = self.base_url.rstrip("/") + url
 
                             company_el = await card.query_selector(".company, .employer, [class*='empresa']")
                             company = await company_el.inner_text() if company_el else "Confidencial"
 
-                            if url and ("empleo" in url.lower() or "oferta" in url.lower()):
-                                all_jobs.append({
-                                    'title': title.strip()[:100],
-                                    'company': company.strip()[:100],
-                                    'url': url,
-                                    'site': self.site_name,
-                                    'requires_manual': False
-                                })
+                            all_jobs.append({
+                                'title': title.strip()[:100],
+                                'company': company.strip()[:100],
+                                'url': url,
+                                'site': self.site_name,
+                                'requires_manual': False
+                            })
                         except Exception as e:
                             logger.error(f"Error procesando tarjeta en {self.site_name}: {e}")
                             continue

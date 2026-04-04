@@ -82,7 +82,17 @@ async def init_db():
                 VALUES (?, ?)
             """, (key, value))
         
+        # Limpieza de URLs inválidas de Tecoloco (categorías sin ID numérico)
+        # Patrón válido: /12345/ en la URL
+        await db.execute("""
+            DELETE FROM jobs 
+            WHERE site = 'tecoloco' 
+            AND url NOT REGEXP '\\/[0-9]+\\/'
+            AND status IN ('new', 'failed')
+        """)
+        
         await db.commit()
+        logger.info("Base de datos inicializada y limpiada correctamente.")
     return True
 
 if __name__ == "__main__":
