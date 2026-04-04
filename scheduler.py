@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from playwright.async_api import async_playwright
 
@@ -35,7 +35,8 @@ def get_all_scrapers():
 
 async def run_single_site_scan(site_name: str):
     """Ejecuta el escaneo para un único sitio específico."""
-    logger.info(f"--- Escaneo manual iniciado: {site_name} ({datetime.now()}) ---")
+    now_managua = datetime.now() - timedelta(hours=6)
+    logger.info(f"--- Escaneo manual iniciado: {site_name} ({now_managua}) ---")
     
     scrapers = get_all_scrapers()
     target_scraper = next((s for s in scrapers if s.site_name == site_name), None)
@@ -56,7 +57,8 @@ async def run_single_site_scan(site_name: str):
 
 async def run_scan_cycle():
     """Ejecuta un ciclo completo de escaneo y postulación."""
-    logger.info(f"--- Iniciando ciclo de escaneo automático: {datetime.now()} ---")
+    now_managua = datetime.now() - timedelta(hours=6)
+    logger.info(f"--- Iniciando ciclo de escaneo automático: {now_managua} ---")
     
     scrapers = get_all_scrapers()
     
@@ -151,7 +153,8 @@ async def run_scan_cycle():
         }
         await send_summary(applied_successfully, manual_jobs, stats)
 
-    logger.info(f"--- Fin de ciclo automático: {datetime.now()} ---")
+    now_managua = datetime.now() - timedelta(hours=6)
+    logger.info(f"--- Fin de ciclo automático: {now_managua} ---")
 
 def start_scheduler():
     scheduler = AsyncIOScheduler()
