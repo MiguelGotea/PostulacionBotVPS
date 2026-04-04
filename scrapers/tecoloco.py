@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import random
+import re
 from scrapers.base import BaseScraper
 from config import KEYWORDS, PLAYWRIGHT_TIMEOUT
 
@@ -54,7 +55,8 @@ class TecolocoScraper(BaseScraper):
                             company_el = await card.query_selector(".company, .employer, [class*='empresa']")
                             company = await company_el.inner_text() if company_el else "Confidencial"
 
-                            if url and ("empleo" in url.lower() or "oferta" in url.lower()):
+                            # Solo aceptar URLs con ID numérico real (ej: /1054667/...)
+                            if url and re.search(r'/\d+/', url):
                                 all_jobs.append({
                                     'title': title.strip()[:100],
                                     'company': company.strip()[:100],

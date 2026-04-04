@@ -125,6 +125,28 @@ async def scan_site(site_name: str, background_tasks: BackgroundTasks):
     background_tasks.add_task(run_single_site_scan, site_name)
     return RedirectResponse(url="/settings?msg=Escaneo+iniciado", status_code=303)
 
+@app.post("/settings/cleanup-invalid")
+async def cleanup_invalid_jobs():
+    """Elimina ofertas con URLs de categoría (sin ID numérico) de la base de datos."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Borrar URLs que no tienen un ID numérico tipo /123456/
+        result = await db.execute("""
+            DELETE FROM jobs 
+            WHERE site = 'tecoloco' 
+            AND url NOT REGEXP '\/[0-9]+\/'
+        """)
+        # SQLite no tiene REGEXP nativo, usamos LIKE con NOT GLOB
+        await db.execute("""
+            DELETE FROM jobs 
+            WHERE site = 'tecoloco' 
+            AND url NOT LIKE '%/.%/%' 
+            AND (url LIKE '%empleo-%' OR url LIKE '%/empleos?%' OR url LIKE '%PerPage%')
+        """)
+        deleted = db.total_changes
+        await db.commit()
+    
+    return RedirectResponse(url=f"/settings?msg=Limpieza+completada", status_code=303)
+
 @app.post("/ignore/{job_id}")
 async def ignore_job(job_id: int):
     """Marca una oferta como ignorada."""

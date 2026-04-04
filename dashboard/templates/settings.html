@@ -95,11 +95,15 @@
     </div>
 
     <div class="settings-card">
-        <h3>Acciones del Sistema</h3>
-        <p>Forzar escaneo o verificar conexión (se requiere PM2 activo).</p>
+        <h3>🛠️ Acciones del Sistema</h3>
+        <p>Mantenimiento y limpieza de la base de datos.</p>
         <div class="control-actions">
-            <button class="btn btn-primary" onclick="alert('Funcionalidad en desarrollo.')">Forzar Escaneo Ahora</button>
-            <p><small>Próximo escaneo programado: Automático cada 1 hora.</small></p>
+            <form action="/settings/cleanup-invalid" method="post" style="display:inline;">
+                <button type="submit" class="btn-scan" onclick="return confirm('¿Eliminar ofertas inválidas de Tecoloco de la base de datos?')">
+                    🧹 Limpiar Ofertas Inválidas
+                </button>
+            </form>
+            <p><small>Elimina URLs de categorías o búsquedas que el bot intentó aplicar por error.</small></p>
         </div>
     </div>
 </div>
