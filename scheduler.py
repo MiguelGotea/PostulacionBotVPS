@@ -36,11 +36,24 @@ async def run_scan_cycle():
         LinkedinScraper()
     ]
     
+    # 1. Consultar sitios habilitados
+    active_sites = []
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT site_name FROM site_configs WHERE is_enabled = 1") as cursor:
+            rows = await cursor.fetchall()
+            active_sites = [row[0] for row in rows]
+    
+    logger.info(f"Sitios activos en este ciclo: {active_sites}")
+    
     all_found_jobs = []
     
     async with async_playwright() as p:
-        # 1. Correr todos los scrapers
+        # 2. Correr solo los scrapers habilitados
         for scraper in scrapers:
+            if scraper.site_name not in active_sites:
+                logger.info(f"[{scraper.site_name}] Saltando (Deshabilitado por el usuario)")
+                continue
+                
             try:
                 jobs = await scraper.scrape(p)
                 new_count = await scraper.save_jobs(jobs)

@@ -75,11 +75,29 @@ async def settings(request: Request):
         """) as cursor:
             stats_by_site = await cursor.fetchall()
 
+        # Obtener configuración de sitios activa
+        async with db.execute("SELECT * FROM site_configs") as cursor:
+            site_configs = await cursor.fetchall()
+
     return templates.TemplateResponse("settings.html", {
         "request": request, 
         "keywords": KEYWORDS,
-        "stats": stats_by_site
+        "stats": stats_by_site,
+        "site_configs": site_configs
     })
+
+@app.post("/settings/toggle-site/{site_name}")
+async def toggle_site(site_name: str):
+    """Habilita o deshabilita un portal de empleo."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        async with db.execute("SELECT is_enabled FROM site_configs WHERE site_name = ?", (site_name,)) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                new_status = 0 if row[0] == 1 else 1
+                await db.execute("UPDATE site_configs SET is_enabled = ? WHERE site_name = ?", (new_status, site_name))
+                await db.commit()
+    
+    return RedirectResponse(url="/settings", status_code=303)
 
 @app.post("/ignore/{job_id}")
 async def ignore_job(job_id: int):

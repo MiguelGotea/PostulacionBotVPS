@@ -43,6 +43,25 @@ async def init_db():
                 errors TEXT
             )
         """)
+
+        # Tabla de configuración de sitios (habilitar/deshabilitar)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS site_configs (
+                site_name TEXT PRIMARY KEY,
+                is_enabled BOOLEAN DEFAULT 1
+            )
+        """)
+        
+        # Poblar con sitios por defecto si está vacía
+        default_sites = [
+            'tecoloco', 'computrabajo', 'opcionempleo', 
+            'acciontrabajo', 'encuentra24', 'linkedin'
+        ]
+        for site in default_sites:
+            await db.execute("""
+                INSERT OR IGNORE INTO site_configs (site_name, is_enabled) 
+                VALUES (?, 1)
+            """, (site,))
         
         await db.commit()
         logger.info("Base de datos inicializada correctamente.")

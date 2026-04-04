@@ -19,8 +19,25 @@
         </div>
     </div>
 
+    <div class="settings-card">
+        <h3>🌍 Gestión de Portales</h3>
+        <p>Habilita o deshabilita los sitios donde el bot buscará empleos.</p>
+        <div class="site-toggle-grid">
+            {% for site in site_configs %}
+            <div class="site-toggle-item">
+                <span class="site-name">{{ site.site_name | capitalize }}</span>
+                <form action="/settings/toggle-site/{{ site.site_name }}" method="post">
+                    <button type="submit" class="toggle-btn {% if site.is_enabled %}active{% endif %}">
+                        {% if site.is_enabled %}Activo{% else %}Inactivo{% endif %}
+                    </button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
     <div class="settings-card stats-summary">
-        <h3>Estadísticas por Sitio</h3>
+        <h3>📊 Estadísticas por Sitio</h3>
         <table class="simple-table">
             <thead>
                 <tr>

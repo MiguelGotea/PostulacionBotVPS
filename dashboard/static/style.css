@@ -178,6 +178,56 @@ body {
 .btn-view { background: var(--primary); color: white; }
 .btn-primary { background: var(--accent); color: white; width: 100%; margin: 0; }
 
+/* Gestión de Portales */
+.site-toggle-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.site-toggle-item {
+    background: #f8f9fa;
+    padding: 15px;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    border: 1px solid #ddd;
+    transition: all 0.3s ease;
+}
+
+.site-toggle-item:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+.site-name {
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: var(--secondary-color);
+}
+
+.toggle-btn {
+    padding: 8px 20px;
+    border: none;
+    border-radius: 20px;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.85em;
+    background: #e74c3c;
+    color: white;
+    transition: all 0.3s ease;
+}
+
+.toggle-btn.active {
+    background: #27ae60;
+}
+
+.toggle-btn:hover {
+    opacity: 0.9;
+}
+
 /* Tables */
 .table-container {
     background: var(--white);
