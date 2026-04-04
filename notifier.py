@@ -58,7 +58,11 @@ async def send_summary(applied_jobs: list, manual_jobs: list, stats: dict):
     """
     
     for job in manual_jobs:
-        html_content += f"<li><strong>{job.get('title')}</strong> en {job.get('company')} ({job.get('site')}) - <a href='{job.get('url')}'>Ir a la oferta</a></li>"
+        title = job.get('title') if isinstance(job, dict) else job['title']
+        company = job.get('company') if isinstance(job, dict) else job['company']
+        site = job.get('site') if isinstance(job, dict) else job['site']
+        url = job.get('url') if isinstance(job, dict) else job['url']
+        html_content += f"<li><strong>{title}</strong> en {company} ({site}) - <a href='{url}'>Ir a la oferta</a></li>"
         
     html_content += f"""
         </ul>

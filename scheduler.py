@@ -65,7 +65,8 @@ async def run_scan_cycle():
             SELECT * FROM jobs 
             WHERE requires_manual = 1 AND date_found >= datetime('now', '-1 hour')
         """) as cursor:
-            manual_jobs = await cursor.fetchall()
+            rows = await cursor.fetchall()
+            manual_jobs = [dict(row) for row in rows]
 
     # 3. Procesar postulaciones
     applied_successfully = []

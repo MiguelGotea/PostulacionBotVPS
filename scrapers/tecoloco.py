@@ -20,35 +20,37 @@ class TecolocoScraper(BaseScraper):
 
         try:
             for keyword in KEYWORDS:
-                # Construir URL formateada con guiones para Tecoloco
-                k_slug = keyword.replace(" ", "-").lower()
-                search_url = f"{self.base_url}listado/{k_slug}.aspx"
+                # Usar la URL de búsqueda directa que es más confiable
+                k_query = keyword.replace(" ", "+").lower()
+                search_url = f"{self.base_url}empleos?Keywords={k_query}&PaisId=41"
                 
                 logger.info(f"[{self.site_name}] Escaneando keyword: {keyword} -> {search_url}")
                 
                 try:
-                    await page.goto(search_url, wait_until="networkidle")
+                    await page.goto(search_url, wait_until="load")
                     await self.human_delay()
 
-                    # Extraer tarjetas de oferta
-                    # Nota: Estos selectores son ilustrativos y deben validarse con el DOM real
-                    job_cards = await page.query_selector_all(".job-item, .job-listing, article.job")
+                    # Extraer tarjetas de oferta (Selectores actualizados)
+                    job_cards = await page.query_selector_all(".job-result, .card, .job-item, .listing-card")
                     
                     if not job_cards:
-                        # Reintento con selector genérico si el anterior falla
-                        job_cards = await page.query_selector_all("a[href*='/empleos/']")
+                        # Reintento con selector de enlaces si fallan las tarjetas
+                        job_cards = await page.query_selector_all("a[href*='/ofertas-de-trabajo/'], a[href*='/empleos/']")
 
-                    for card in job_cards[:10]: # Limitar por keyword para no saturar
+                    for card in job_cards[:15]:
                         try:
-                            title_el = await card.query_selector("h2, .title")
-                            title = await title_el.inner_text() if title_el else "Sin título"
+                            title_el = await card.query_selector("h2, .title, .job-title")
+                            title = await title_el.inner_text() if title_el else "Sin titulo"
                             
                             url = await card.get_attribute("href")
+                            if not url:
+                                # Intentar buscar el link dentro de la tarjeta
+                                link_el = await card.query_selector("a")
+                                if link_el: url = await link_el.get_attribute("href")
+
                             if url and not url.startswith("http"):
                                 url = self.base_url.rstrip("/") + url
 
-                            # Navegar al detalle para obtener descripción completa
-                            # (Opcional si la tarjeta ya tiene la info básica)
                             job = {
                                 'title': title.strip(),
                                 'url': url,
@@ -56,7 +58,7 @@ class TecolocoScraper(BaseScraper):
                                 'requires_manual': False
                             }
                             
-                            if url:
+                            if url and "empleo" in url.lower():
                                 all_jobs.append(job)
                         except Exception as e:
                             logger.error(f"Error procesando tarjeta en {self.site_name}: {e}")
