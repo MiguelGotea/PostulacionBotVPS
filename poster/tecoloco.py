@@ -1,8 +1,9 @@
 import asyncio
 import logging
 import random
+import aiosqlite
 from poster.base import BasePoster
-from config import MIN_DELAY, MAX_DELAY, CREDENTIALS, PLAYWRIGHT_TIMEOUT
+from config import MIN_DELAY, MAX_DELAY, CREDENTIALS, PLAYWRIGHT_TIMEOUT, DB_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -11,80 +12,126 @@ class TecolocoPoster(BasePoster):
         super().__init__("tecoloco")
         self.login_url = "https://www.tecoloco.com.ni/login.aspx"
 
-    async def login(self, page, credentials) -> bool:
-        """Realiza el login de Tecoloco con los selectores exactos de la captura."""
+    async def get_app_settings(self):
+        """Obtiene la configuración de salario y estado laboral de la DB."""
+        settings = {'salary': '12000', 'working': 'No'}
         try:
-            logger.info(f"[{self.site_name}] Intentando login con selectores de captura...")
+            async with aiosqlite.connect(DB_PATH) as db:
+                db.row_factory = aiosqlite.Row
+                async with db.execute("SELECT * FROM app_settings") as cursor:
+                    rows = await cursor.fetchall()
+                    for row in rows:
+                        if row['key'] == 'tecoloco_salary': settings['salary'] = row['value']
+                        if row['key'] == 'tecoloco_working': settings['working'] = row['value']
+        except Exception as e:
+            logger.error(f"Error cargando app_settings: {e}")
+        return settings
+
+    async def login(self, page, credentials) -> bool:
+        """Realiza el login de Tecoloco simulando comportamiento humano."""
+        try:
+            logger.info(f"[{self.site_name}] Iniciando sesión en modo sigilo...")
+            await page.set_extra_http_headers({
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36"
+            })
+
             await page.goto(self.login_url, wait_until="load", timeout=60000)
             await asyncio.sleep(random.uniform(2, 4))
             
-            # Selectores exactos según la imagen de "INICIO DE SESIÓN PARA CANDIDATOS"
-            email_selector = "#txtEmail, input[id*='Email']"
-            pass_selector = "#txtPassword, input[id*='Password']"
-            login_btn_selector = "button:has-text('INICIO CANDIDATOS'), .btn-login, input[type='submit']"
-
+            email_selector = "input[type='email'], input[name*='Email'], #txtEmail"
             await page.wait_for_selector(email_selector, timeout=20000)
             
-            # Escribir email
             await page.click(email_selector)
             await page.keyboard.type(credentials['email'], delay=random.uniform(50, 150))
             
-            # Escribir password
+            pass_selector = "input[type='password'], #txtPassword, input[name*='Password']"
             await page.click(pass_selector)
             await page.keyboard.type(credentials['password'], delay=random.uniform(50, 150))
+                
+            await asyncio.sleep(random.uniform(1, 2))
             
-            await asyncio.sleep(1)
+            login_btn = "button:has-text('INICIO CANDIDATOS'), #btnLogin, .btn-login"
+            await page.click(login_btn)
             
-            # Click en el botón VERDE de "INICIO CANDIDATOS"
-            logger.info(f"[{self.site_name}] Haciendo clic en INICIO CANDIDATOS...")
-            await page.click(login_btn_selector)
+            await page.wait_for_load_state("load")
+            await asyncio.sleep(5)
             
-            # Esperar a redirección
-            await asyncio.sleep(6)
-            
-            current_url = page.url.lower()
-            if "login.aspx" not in current_url:
-                logger.info(f"[{self.site_name}] Login exitoso (URL actual: {current_url})")
+            if "login.aspx" not in page.url.lower():
+                logger.info(f"[{self.site_name}] Login exitoso.")
                 return True
             
-            # Verificación por nombre de usuario en menú (como se ve en tu captura de sesión exitosa)
-            user_label = await page.query_selector(".user-info, #liUser, .user-name")
-            if user_label:
-                logger.info(f"[{self.site_name}] Login exitoso (Usuario detectado)")
+            is_logged_in = await page.query_selector("a[href*='logout'], .user-wrapper, .my-account")
+            if is_logged_in:
+                logger.info(f"[{self.site_name}] Login exitoso (Detectado elemento de sesión)")
                 return True
 
-            logger.error(f"[{self.site_name}] Fallo de login: Se mantiene en la página de acceso.")
+            logger.error(f"[{self.site_name}] Fallo de login.")
             return False
                 
         except Exception as e:
-            logger.error(f"[{self.site_name}] Error crítico en login: {e}")
+            logger.error(f"[{self.site_name}] Error en login: {e}")
             return False
 
     async def apply(self, page, job_url) -> bool:
-        """Postulación simplificada."""
+        """Postulación completa incluyendo cuestionario de preguntas."""
         try:
-            logger.info(f"[{self.site_name}] Navegando a la oferta...")
+            settings = await self.get_app_settings()
+            logger.info(f"[{self.site_name}] Navegando a: {job_url}")
             await page.goto(job_url, wait_until="load", timeout=60000)
-            await asyncio.sleep(3)
+            await asyncio.sleep(random.uniform(3, 5))
 
-            # Botón "Postularme" / "Aplicar"
-            apply_btn = await page.query_selector("a.btn-postularme, #btnAplicar, .btn-primary")
+            # 1. Click en Aplicar inicial
+            apply_btn = await page.query_selector("a.btn-postularme, button.apply, #btnAplicar, .btn-primary")
             if not apply_btn:
-                logger.warning(f"[{self.site_name}] Botón de postulación no encontrado.")
+                logger.warning(f"[{self.site_name}] No se detectó botón de postulación inicial.")
+                # Verificar si ya postulamos
+                if await page.query_selector("text='Ya has aplicado'"):
+                    logger.info(f"[{self.site_name}] Ya se ha aplicado a esta oferta.")
+                    return True
                 return False
                 
             await apply_btn.click()
             await asyncio.sleep(5)
             
-            # Si hay un paso intermedio de confirmación
-            confirm = await page.query_selector("input[value*='Enviar'], button[id*='Finish']")
-            if confirm:
-                await confirm.click()
-                await asyncio.sleep(2)
+            # 2. Paso "IR A PREGUNTAS"
+            questions_btn = await page.query_selector("text='IR A PREGUNTAS', button:has-text('PREGUNTAS'), .btn-success")
+            if questions_btn:
+                logger.info(f"[{self.site_name}] Entrando al cuestionario...")
+                await questions_btn.click()
+                await asyncio.sleep(3)
 
-            logger.info(f"[{self.site_name}] Postulación completada.")
+            # 3. Rellenar Cuestionario
+            # Expectativa salarial
+            salary_input = await page.query_selector("input[type='number'], input[name*='salario'], input[id*='salario']")
+            if salary_input:
+                logger.info(f"[{self.site_name}] Ingresando salario: {settings['salary']}")
+                await salary_input.fill(settings['salary'])
+
+            # Se encuentra laborando
+            if settings['working'] == 'No':
+                working_radio = await page.query_selector("text='No' >> .. >> input[type='radio']")
+                if working_radio:
+                    await working_radio.click()
+            else:
+                working_radio = await page.query_selector("text='Sí' >> .. >> input[type='radio']")
+                if working_radio:
+                    await working_radio.click()
+
+            await asyncio.sleep(2)
+
+            # 4. Botón Aplicar Final
+            final_btn = await page.query_selector("button:has-text('APLICAR'), input[value*='Aplicar'], .btn-primary")
+            if final_btn:
+                logger.info(f"[{self.site_name}] Haciendo clic en Aplicar final...")
+                await final_btn.click()
+                await asyncio.sleep(5)
+            else:
+                logger.warning(f"[{self.site_name}] No se encontró el botón de Aplicar final.")
+                return False
+
+            logger.info(f"[{self.site_name}] Postulación completa exitosa.")
             return True
 
         except Exception as e:
-            logger.error(f"[{self.site_name}] Error en aplicación: {e}")
+            logger.error(f"[{self.site_name}] Error en proceso de aplicación: {e}")
             return False

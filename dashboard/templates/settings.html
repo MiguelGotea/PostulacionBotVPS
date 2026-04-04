@@ -26,6 +26,25 @@
     {% endif %}
 
     <div class="settings-card">
+        <h3>📄 Parámetros de Tecoloco</h3>
+        <p>Configura las respuestas automáticas para los cuestionarios de Tecoloco.</p>
+        <form action="/settings/update-app" method="post" class="app-settings-form">
+            <div class="form-group">
+                <label for="tecoloco_salary">💰 Expectativa Salarial (Neto):</label>
+                <input type="number" name="tecoloco_salary" id="tecoloco_salary" value="{{ app_settings.tecoloco_salary }}" class="form-input">
+            </div>
+            <div class="form-group">
+                <label for="tecoloco_working">💼 ¿Se encuentra laborando actualmente?:</label>
+                <select name="tecoloco_working" id="tecoloco_working" class="form-input">
+                    <option value="No" {% if app_settings.tecoloco_working == 'No' %}selected{% endif %}>No</option>
+                    <option value="Sí" {% if app_settings.tecoloco_working == 'Sí' %}selected{% endif %}>Sí</option>
+                </select>
+            </div>
+            <button type="submit" class="btn-primary">Guardar parámetros</button>
+        </form>
+    </div>
+
+    <div class="settings-card">
         <h3>🌍 Gestión de Portales</h3>
         <p>Habilita o deshabilita los sitios donde el bot buscará empleos. También puedes disparar un escaneo manual.</p>
         <div class="site-toggle-grid">

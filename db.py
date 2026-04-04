@@ -63,10 +63,26 @@ async def init_db():
                 VALUES (?, 1)
             """, (site,))
         
+        # Tabla de configuración de aplicaciones (Salario, etc.)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )
+        """)
+        
+        # Poblar con valores por defecto
+        default_settings = [
+            ('tecoloco_salary', '12000'),
+            ('tecoloco_working', 'No')
+        ]
+        for key, value in default_settings:
+            await db.execute("""
+                INSERT OR IGNORE INTO app_settings (key, value) 
+                VALUES (?, ?)
+            """, (key, value))
+        
         await db.commit()
-        logger.info("Base de datos inicializada correctamente.")
-
-if __name__ == "__main__":
     # Script para inicializar manualmente si es necesario
     logging.basicConfig(level=logging.INFO)
     asyncio.run(init_db())

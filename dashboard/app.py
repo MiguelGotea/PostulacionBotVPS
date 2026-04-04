@@ -79,13 +79,32 @@ async def settings(request: Request):
         # Obtener configuración de sitios activa
         async with db.execute("SELECT * FROM site_configs") as cursor:
             site_configs = await cursor.fetchall()
+            
+        # Obtener parámetros de aplicación (Salario, etc.)
+        async with db.execute("SELECT * FROM app_settings") as cursor:
+            app_settings = await cursor.fetchall()
+            app_settings_dict = {row['key']: row['value'] for row in app_settings}
 
     return templates.TemplateResponse("settings.html", {
         "request": request, 
         "keywords": KEYWORDS,
         "stats": stats_by_site,
-        "site_configs": site_configs
+        "site_configs": site_configs,
+        "app_settings": app_settings_dict
     })
+
+@app.post("/settings/update-app")
+async def update_app_settings(
+    tecoloco_salary: str = Form(...),
+    tecoloco_working: str = Form(...)
+):
+    """Actualiza los parámetros globales de las postulaciones."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)", ('tecoloco_salary', tecoloco_salary))
+        await db.execute("INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)", ('tecoloco_working', tecoloco_working))
+        await db.commit()
+    
+    return RedirectResponse(url="/settings?msg=Parametros+actualizados", status_code=303)
 
 @app.post("/settings/toggle-site/{site_name}")
 async def toggle_site(site_name: str):

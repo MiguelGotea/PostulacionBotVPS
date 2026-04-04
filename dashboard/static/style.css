@@ -261,6 +261,37 @@ body {
     border: 1px solid #c3e6cb;
 }
 
+/* Formularios de Configuración */
+.app-settings-form {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    margin-top: 20px;
+}
+
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.form-group label {
+    font-weight: 600;
+    color: var(--secondary-color);
+}
+
+.form-input {
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+.form-input:focus {
+    border-color: var(--primary);
+    outline: none;
+}
+
 /* Tables */
 .table-container {
     background: var(--white);
