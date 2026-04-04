@@ -19,47 +19,61 @@ class OpcionempleoScraper(BaseScraper):
 
         try:
             for keyword in KEYWORDS:
-                # URL: https://www.opcionempleo.com.ni/trabajo/Nicaragua con búsqueda interna
-                # query params: s={keyword}
+                # Ordenar por fecha para obtener los más recientes arriba
                 query = urllib.parse.quote(keyword)
-                search_url = f"{self.base_url}buscar/empleos?s={query}&l=Nicaragua"
+                # Opcionempleo: sort=date para prioridad cronológica
+                search_url = f"{self.base_url}buscar/empleos?s={query}&l=Nicaragua&sort=date"
                 
-                logger.info(f"[{self.site_name}] Escaneando keyword: {keyword} -> {search_url}")
+                logger.info(f"[{self.site_name}] Escaneando: {keyword} -> {search_url}")
                 
                 try:
-                    await page.goto(search_url, wait_until="networkidle")
+                    await page.goto(search_url, wait_until="load")
                     await self.human_delay()
 
-                    # Selectores de Opcionempleo
-                    job_cards = await page.query_selector_all("article.job, .job.click")
+                    # Selectores ultra-amplios para Opcionempleo
+                    # Buscamos cualquier artículo o div que parezca un job
+                    job_cards = await page.query_selector_all("article, .job, .click, [data-job-id]")
                     
-                    for card in job_cards[:10]:
+                    if not job_cards:
+                        # Fallback a links de trabajo
+                        job_cards = await page.query_selector_all("a[href*='/job/'], a[href*='/trabajo-']")
+
+                    # Aumentamos a 40 el límite para capturar vacantes de días anteriores
+                    for card in job_cards[:40]:
                         try:
-                            title_el = await card.query_selector("h2 a, .title a")
-                            title = await title_el.inner_text() if title_el else "Sin título"
+                            # Título y Link
+                            title_el = await card.query_selector("h2, .title, .job-title, a[href*='/job/']")
+                            if not title_el: continue
                             
-                            url = await title_el.get_attribute("href") if title_el else None
+                            title = await title_el.inner_text()
+                            
+                            # Buscar el link en el elemento del título o en la tarjeta
+                            url = await title_el.get_attribute("href")
+                            if not url:
+                                link_el = await card.query_selector("a")
+                                if link_el: url = await link_el.get_attribute("href")
+
                             if url and not url.startswith("http"):
                                 url = self.base_url.rstrip("/") + url
 
-                            company_el = await card.query_selector(".company, .company_name")
+                            company_el = await card.query_selector(".company, .employer, .company_name, span[class*='company']")
                             company = await company_el.inner_text() if company_el else "Confidencial"
 
-                            if url:
+                            if url and ("/job/" in url.lower() or "trabajo-" in url.lower()):
                                 all_jobs.append({
-                                    'title': title.strip(),
-                                    'company': company.strip(),
+                                    'title': title.strip()[:100],
+                                    'company': company.strip()[:100],
                                     'location': "Nicaragua",
                                     'url': url,
                                     'site': self.site_name,
                                     'requires_manual': False
                                 })
                         except Exception as e:
-                            logger.error(f"Error procesando tarjeta en {self.site_name}: {e}")
+                            logger.error(f"Error en tarjeta de {self.site_name}: {e}")
                             continue
 
                 except Exception as e:
-                    logger.error(f"Error escaneando {keyword} en {self.site_name}: {e}")
+                    logger.error(f"Error en {keyword} en {self.site_name}: {e}")
                     continue
 
         finally:
@@ -67,12 +81,3 @@ class OpcionempleoScraper(BaseScraper):
 
         unique_jobs = {j['url']: j for j in all_jobs}.values()
         return list(unique_jobs)
-
-if __name__ == "__main__":
-    from playwright.async_api import async_playwright
-    async def test():
-        async with async_playwright() as p:
-            s = OpcionempleoScraper()
-            jobs = await s.scrape(p)
-            print(f"Encontrados {len(jobs)} empleos en {s.site_name}")
-    asyncio.run(test())
