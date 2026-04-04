@@ -25,8 +25,8 @@ class BaseScraper(abc.ABC):
                 if await self.is_new_job(db, job['url']):
                     try:
                         await db.execute("""
-                            INSERT INTO jobs (title, company, location, url, site, salary, description, requires_manual)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            INSERT INTO jobs (title, company, location, url, site, salary, description, requires_manual, date_found)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '-6 hours'))
                         """, (
                             job.get('title'),
                             job.get('company'),
@@ -69,7 +69,7 @@ class BaseScraper(abc.ABC):
         """Registra el resultado del escaneo en scan_log."""
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("""
-                INSERT INTO scan_log (site, jobs_found, errors)
-                VALUES (?, ?, ?)
+                INSERT INTO scan_log (site, jobs_found, errors, scan_date)
+                VALUES (?, ?, ?, datetime('now', '-6 hours'))
             """, (self.site_name, jobs_found, errors))
             await db.commit()
