@@ -129,23 +129,31 @@ async def scan_site(site_name: str, background_tasks: BackgroundTasks):
 async def cleanup_invalid_jobs():
     """Elimina ofertas con URLs de categoría (sin ID numérico) de la base de datos."""
     async with aiosqlite.connect(DB_PATH) as db:
-        # Borrar URLs que no tienen un ID numérico tipo /123456/
-        result = await db.execute("""
-            DELETE FROM jobs 
-            WHERE site = 'tecoloco' 
-            AND url NOT REGEXP '\/[0-9]+\/'
-        """)
-        # SQLite no tiene REGEXP nativo, usamos LIKE con NOT GLOB
-        await db.execute("""
-            DELETE FROM jobs 
-            WHERE site = 'tecoloco' 
-            AND url NOT LIKE '%/.%/%' 
-            AND (url LIKE '%empleo-%' OR url LIKE '%/empleos?%' OR url LIKE '%PerPage%')
-        """)
-        deleted = db.total_changes
-        await db.commit()
-    
-    return RedirectResponse(url=f"/settings?msg=Limpieza+completada", status_code=303)
+        db.row_factory = aiosqlite.Row
+        # Traer todos los jobs de tecoloco no aplicados para filtrarlos en Python
+        async with db.execute(
+            "SELECT id, url FROM jobs WHERE site = 'tecoloco' AND status != 'applied'"
+        ) as cursor:
+            rows = await cursor.fetchall()
+
+        import re
+        invalid_ids = []
+        for row in rows:
+            url = row['url'] or ''
+            # URL válida de oferta individual: contiene un segmento numérico largo (ej: /1054667/)
+            if not re.search(r'/\d{4,}/', url):
+                invalid_ids.append(row['id'])
+
+        if invalid_ids:
+            placeholders = ','.join('?' * len(invalid_ids))
+            await db.execute(f"DELETE FROM jobs WHERE id IN ({placeholders})", invalid_ids)
+            await db.commit()
+
+        deleted = len(invalid_ids)
+
+    logger.info(f"Cleanup: {deleted} ofertas de categoría eliminadas de tecoloco.")
+    return RedirectResponse(url=f"/settings?msg=Limpieza+completada:+{deleted}+ofertas+invalidas+eliminadas", status_code=303)
+
 
 @app.post("/retry-failed")
 async def retry_failed_jobs(site: str = Form(None)):
