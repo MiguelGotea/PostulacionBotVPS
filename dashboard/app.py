@@ -147,6 +147,25 @@ async def cleanup_invalid_jobs():
     
     return RedirectResponse(url=f"/settings?msg=Limpieza+completada", status_code=303)
 
+@app.post("/retry-failed")
+async def retry_failed_jobs(site: str = Form(None)):
+    """Resetea los jobs fallidos a 'new' para que sean reintentados en el próximo ciclo."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        if site:
+            await db.execute(
+                "UPDATE jobs SET status = 'new', error_message = NULL, date_applied = NULL WHERE status = 'failed' AND site = ?",
+                (site,)
+            )
+        else:
+            await db.execute(
+                "UPDATE jobs SET status = 'new', error_message = NULL, date_applied = NULL WHERE status = 'failed'"
+            )
+        count = db.total_changes
+        await db.commit()
+    logger.info(f"Retry: {count} jobs fallidos reseteados a 'new' (site={site or 'todos'})")
+    msg = f"{count}+jobs+reseteados+para+reintento"
+    return RedirectResponse(url=f"/applied?msg={msg}", status_code=303)
+
 @app.post("/ignore/{job_id}")
 async def ignore_job(job_id: int):
     """Marca una oferta como ignorada."""

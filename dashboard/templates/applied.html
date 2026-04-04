@@ -8,6 +8,20 @@
     <p>Revisa el estado de las postulaciones realizadas automáticamente.</p>
 </div>
 
+{% if request.query_params.get('msg') %}
+<div class="alert-success">✅ {{ request.query_params.get('msg')|replace('+', ' ') }}</div>
+{% endif %}
+
+<div class="action-bar">
+    <form method="post" action="/retry-failed" style="display:inline">
+        <input type="hidden" name="site" value="tecoloco">
+        <button type="submit" class="btn-retry">🔄 Reintentar Fallidos (Tecoloco)</button>
+    </form>
+    <form method="post" action="/retry-failed" style="display:inline">
+        <button type="submit" class="btn-retry btn-retry-all">🔄 Reintentar Todos los Fallidos</button>
+    </form>
+</div>
+
 <div class="table-container">
     <table class="data-table">
         <thead>

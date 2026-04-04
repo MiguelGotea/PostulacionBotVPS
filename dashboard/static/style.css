@@ -328,6 +328,35 @@ body {
 .status-applied { background: #D4EFDF; color: #1E8449; }
 .status-failed { background: #FADBD8; color: #943126; }
 
+/* Action Bar (Historial) */
+.action-bar {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.btn-retry {
+    padding: 9px 18px;
+    border-radius: 20px;
+    border: none;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.85rem;
+    background: var(--warning);
+    color: white;
+    transition: opacity 0.2s, transform 0.15s;
+}
+
+.btn-retry:hover {
+    opacity: 0.85;
+    transform: translateY(-1px);
+}
+
+.btn-retry-all {
+    background: var(--danger);
+}
+
 /* Settings */
 .settings-grid {
     display: grid;
