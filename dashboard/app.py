@@ -1,12 +1,13 @@
 import aiosqlite
 import logging
-from fastapi import FastAPI, Request, Form, HTTPException
+from fastapi import FastAPI, Request, Form, HTTPException, BackgroundTasks
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from datetime import datetime
 
 from config import DB_PATH, KEYWORDS, DASHBOARD_PORT
+from scheduler import run_single_site_scan
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +99,12 @@ async def toggle_site(site_name: str):
                 await db.commit()
     
     return RedirectResponse(url="/settings", status_code=303)
+
+@app.post("/settings/scan-site/{site_name}")
+async def scan_site(site_name: str, background_tasks: BackgroundTasks):
+    """Dispara un escaneo manual de un portal en segundo plano."""
+    background_tasks.add_task(run_single_site_scan, site_name)
+    return RedirectResponse(url="/settings?msg=Escaneo+iniciado", status_code=303)
 
 @app.post("/ignore/{job_id}")
 async def ignore_job(job_id: int):

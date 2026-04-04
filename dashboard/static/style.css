@@ -208,13 +208,19 @@ body {
     color: var(--secondary-color);
 }
 
+.site-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 10px;
+}
+
 .toggle-btn {
-    padding: 8px 20px;
+    padding: 8px 15px;
     border: none;
     border-radius: 20px;
     cursor: pointer;
     font-weight: 600;
-    font-size: 0.85em;
+    font-size: 0.8em;
     background: #e74c3c;
     color: white;
     transition: all 0.3s ease;
@@ -224,8 +230,35 @@ body {
     background: #27ae60;
 }
 
-.toggle-btn:hover {
-    opacity: 0.9;
+.btn-scan {
+    padding: 8px 15px;
+    border: 1px solid var(--primary);
+    border-radius: 20px;
+    background: white;
+    color: var(--primary);
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.8em;
+    transition: all 0.3s ease;
+}
+
+.btn-scan:hover {
+    background: var(--primary);
+    color: white;
+}
+
+.alert {
+    padding: 15px;
+    margin-bottom: 20px;
+    border-radius: 8px;
+    font-weight: 600;
+    text-align: center;
+}
+
+.alert-success {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
 }
 
 /* Tables */

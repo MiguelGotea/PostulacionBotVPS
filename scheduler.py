@@ -4,7 +4,7 @@ from datetime import datetime
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from playwright.async_api import async_playwright
 
-from config import SCAN_INTERVAL_HOURS, MAX_APPLICATIONS_PER_RUN, CREDENTIALS
+from config import SCAN_INTERVAL_HOURS, MAX_APPLICATIONS_PER_RUN, CREDENTIALS, DB_PATH
 from scrapers.tecoloco import TecolocoScraper
 from scrapers.computrabajo import ComputrabajoScraper
 from scrapers.opcionempleo import OpcionempleoScraper
@@ -19,15 +19,12 @@ from poster.acciontrabajo import AcciontrabajoPoster
 
 from notifier import send_summary
 import aiosqlite
-from config import DB_PATH
 
 logger = logging.getLogger(__name__)
 
-async def run_scan_cycle():
-    """Ejecuta un ciclo completo de escaneo y postulación."""
-    logger.info(f"--- Iniciando ciclo de escaneo: {datetime.now()} ---")
-    
-    scrapers = [
+def get_all_scrapers():
+    """Retorna una lista con todos los scrapers disponibles."""
+    return [
         TecolocoScraper(),
         ComputrabajoScraper(),
         OpcionempleoScraper(),
@@ -35,6 +32,33 @@ async def run_scan_cycle():
         Encuentra24Scraper(),
         LinkedinScraper()
     ]
+
+async def run_single_site_scan(site_name: str):
+    """Ejecuta el escaneo para un único sitio específico."""
+    logger.info(f"--- Escaneo manual iniciado: {site_name} ({datetime.now()}) ---")
+    
+    scrapers = get_all_scrapers()
+    target_scraper = next((s for s in scrapers if s.site_name == site_name), None)
+    
+    if not target_scraper:
+        logger.error(f"Scraper no encontrado para el sitio: {site_name}")
+        return
+        
+    async with async_playwright() as p:
+        try:
+            jobs = await target_scraper.scrape(p)
+            new_count = await target_scraper.save_jobs(jobs)
+            await target_scraper.log_scan(len(jobs))
+            logger.info(f"[{site_name}] Escaneo manual finalizado. {new_count} nuevas ofertas.")
+        except Exception as e:
+            logger.error(f"Error en escaneo manual de {site_name}: {e}")
+            await target_scraper.log_scan(0, str(e))
+
+async def run_scan_cycle():
+    """Ejecuta un ciclo completo de escaneo y postulación."""
+    logger.info(f"--- Iniciando ciclo de escaneo automático: {datetime.now()} ---")
+    
+    scrapers = get_all_scrapers()
     
     # 1. Consultar sitios habilitados
     active_sites = []
@@ -127,7 +151,7 @@ async def run_scan_cycle():
         }
         await send_summary(applied_successfully, manual_jobs, stats)
 
-    logger.info(f"--- Fin de ciclo: {datetime.now()} ---")
+    logger.info(f"--- Fin de ciclo automático: {datetime.now()} ---")
 
 def start_scheduler():
     scheduler = AsyncIOScheduler()

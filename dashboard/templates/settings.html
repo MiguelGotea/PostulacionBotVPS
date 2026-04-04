@@ -19,18 +19,33 @@
         </div>
     </div>
 
+    {% if request.query_params.get('msg') %}
+    <div class="alert alert-success">
+        ✅ {{ request.query_params.get('msg') }}
+    </div>
+    {% endif %}
+
     <div class="settings-card">
         <h3>🌍 Gestión de Portales</h3>
-        <p>Habilita o deshabilita los sitios donde el bot buscará empleos.</p>
+        <p>Habilita o deshabilita los sitios donde el bot buscará empleos. También puedes disparar un escaneo manual.</p>
         <div class="site-toggle-grid">
             {% for site in site_configs %}
             <div class="site-toggle-item">
                 <span class="site-name">{{ site.site_name | capitalize }}</span>
-                <form action="/settings/toggle-site/{{ site.site_name }}" method="post">
-                    <button type="submit" class="toggle-btn {% if site.is_enabled %}active{% endif %}">
-                        {% if site.is_enabled %}Activo{% else %}Inactivo{% endif %}
-                    </button>
-                </form>
+                
+                <div class="site-actions">
+                    <form action="/settings/toggle-site/{{ site.site_name }}" method="post">
+                        <button type="submit" class="toggle-btn {% if site.is_enabled %}active{% endif %}">
+                            {% if site.is_enabled %}Activo{% else %}Inactivo{% endif %}
+                        </button>
+                    </form>
+
+                    <form action="/settings/scan-site/{{ site.site_name }}" method="post">
+                        <button type="submit" class="btn-scan" title="Escanear ahora">
+                            🔍 Escanear
+                        </button>
+                    </form>
+                </div>
             </div>
             {% endfor %}
         </div>
