@@ -83,6 +83,10 @@ async def init_db():
             """, (key, value))
         
         await db.commit()
+    return True
+
+if __name__ == "__main__":
     # Script para inicializar manualmente si es necesario
     logging.basicConfig(level=logging.INFO)
     asyncio.run(init_db())
+    print("Base de datos inicializada correctamente.")
