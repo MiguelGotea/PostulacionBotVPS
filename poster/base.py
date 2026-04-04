@@ -47,9 +47,10 @@ class BasePoster(abc.ABC):
         await asyncio.sleep(delay)
 
     async def get_browser_context(self, playwright, headless=True):
-        """Retorna un contexto de navegador para postulación."""
+        """Retorna un contexto de navegador para postulación con viewport aleatorio."""
         browser = await playwright.chromium.launch(headless=headless)
         context = await browser.new_context(
-            user_agent=random.choice(USER_AGENTS)
+            user_agent=random.choice(USER_AGENTS),
+            viewport={'width': random.randint(1280, 1920), 'height': random.randint(720, 1080)}
         )
         return browser, context

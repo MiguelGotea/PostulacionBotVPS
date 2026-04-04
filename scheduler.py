@@ -132,13 +132,11 @@ async def run_scan_cycle():
                 page = await context.new_page()
                 
                 try:
-                    if await poster.login(page, CREDENTIALS[site]):
-                        success = await poster.apply(page, job['url'])
-                        await poster.mark_applied(job['id'], success)
-                        if success:
-                            applied_successfully.append(dict(job))
-                    else:
-                        await poster.mark_applied(job['id'], False, "Fallo de login")
+                    # Flujo Orgánico: apply se encarga del login si es necesario
+                    success = await poster.apply(page, job['url'], CREDENTIALS.get(site))
+                    await poster.mark_applied(job['id'], success)
+                    if success:
+                        applied_successfully.append(dict(job))
                 except Exception as e:
                     logger.error(f"Error procesando postulación para id={job['id']}: {e}")
                     await poster.mark_applied(job['id'], False, str(e))
