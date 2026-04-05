@@ -29,9 +29,10 @@
                 <th>Fecha Postulada</th>
                 <th>Puesto</th>
                 <th>Empresa</th>
+                <th>Ubicación</th>
                 <th>Sitio</th>
                 <th>Estado</th>
-                <th>Error</th>
+                <th>Detalle</th>
                 <th>Link</th>
             </tr>
         </thead>
@@ -41,13 +42,16 @@
                 <td>{{ job.date_applied }}</td>
                 <td>{{ job.title }}</td>
                 <td>{{ job.company }}</td>
+                <td>{{ job.location or '-' }}</td>
                 <td><span class="site-badge badge-{{ job.site|lower }}">{{ job.site }}</span></td>
                 <td>
                     <span class="status-badge status-{{ job.status|lower|replace('_','-') }}">
                         {% if job.status == 'applied' %}✅ Aplicado
                         {% elif job.status == 'no_cumple' %}⚠️ No Cumple
                         {% elif job.status == 'failed' %}❌ Fallido
-                        {% else %}{{ job.status|capitalize }}{% endif %}
+                        {% elif job.status == 'sin_departamento' %}📍 Sin Dpto.
+                        {% elif job.status == 'departamento_no_permitido' %}🚫 Dpto. no permitido
+                        {% else %}{{ job.status|replace('_',' ')|title }}{% endif %}
                     </span>
                 </td>
                 <td class="error-cell">{{ job.error_message or '-' }}</td>
@@ -55,7 +59,7 @@
             </tr>
             {% else %}
             <tr>
-                <td colspan="7" class="no-results">No se han realizado postulaciones todavía.</td>
+                <td colspan="8" class="no-results">No se han realizado postulaciones todavía.</td>
             </tr>
             {% endfor %}
         </tbody>

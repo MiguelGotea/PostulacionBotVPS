@@ -325,9 +325,11 @@ body {
     font-weight: 700;
 }
 
-.status-applied  { background: #D4EFDF; color: #1E8449; }
-.status-failed   { background: #FADBD8; color: #943126; }
-.status-no-cumple { background: #FEF3CD; color: #856404; }
+.status-applied               { background: #D4EFDF; color: #1E8449; }
+.status-failed                { background: #FADBD8; color: #943126; }
+.status-no-cumple             { background: #FEF3CD; color: #856404; }
+.status-sin-departamento      { background: #D6EAF8; color: #1A5276; }
+.status-departamento-no-permitido { background: #FDEBD0; color: #784212; }
 
 /* ── Profile Page ───────────────────────── */
 .profile-card {
