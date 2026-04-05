@@ -55,8 +55,8 @@ async def applied(request: Request):
         db.row_factory = aiosqlite.Row
         async with db.execute("""
             SELECT * FROM jobs 
-            WHERE status IN ('applied', 'failed', 'no_cumple') 
-            ORDER BY date_applied DESC LIMIT 100
+            WHERE status NOT IN ('new', 'ignored', 'applying')
+            ORDER BY date_applied DESC LIMIT 200
         """) as cursor:
             jobs = await cursor.fetchall()
 
