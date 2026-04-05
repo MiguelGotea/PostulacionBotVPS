@@ -22,28 +22,37 @@ templates = Jinja2Templates(directory="dashboard/templates")
 
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request, site: str = None):
-    """Página principal con ofertas nuevas."""
+    """Página principal con ofertas nuevas (últimos 3 días)."""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
-        query = "SELECT * FROM jobs WHERE status = 'new'"
+        query = """
+            SELECT * FROM jobs
+            WHERE status = 'new'
+              AND date_found >= datetime('now', '-3 days')
+        """
         params = []
-        
+
         if site:
             query += " AND site = ?"
             params.append(site)
-            
-        query += " ORDER BY date_found DESC LIMIT 50"
+
+        query += " ORDER BY date_found DESC LIMIT 100"
         async with db.execute(query, params) as cursor:
             jobs = await cursor.fetchall()
-            
-        # Estadísticas rápidas
-        async with db.execute("SELECT COUNT(*) FROM jobs WHERE status = 'new'") as cursor:
+
+        # Contador: total 'new' recientes (últimos 3 días)
+        count_query = "SELECT COUNT(*) FROM jobs WHERE status = 'new' AND date_found >= datetime('now', '-3 days')"
+        count_params = []
+        if site:
+            count_query += " AND site = ?"
+            count_params.append(site)
+        async with db.execute(count_query, count_params) as cursor:
             row = await cursor.fetchone()
             total_new = row[0] if row else 0
 
     return templates.TemplateResponse("index.html", {
-        "request": request, 
-        "jobs": jobs, 
+        "request": request,
+        "jobs": jobs,
         "total_new": total_new,
         "current_site": site
     })
