@@ -41,40 +41,98 @@ class TecolocoPoster(BasePoster):
 
     async def _do_login(self, page, credentials: dict) -> bool:
         """
-        Hace login desde la página actual (que ya debe ser login.aspx).
-        El ReturnUrl en la URL hará que Tecoloco redirija automáticamente
-        a /Jobs/Aplicar/{id} tras el login exitoso.
+        Login robusto: prueba múltiples selectores sin wait_for_selector fijo.
+        Compatible con formularios ASP.NET dinámicos.
         """
         creds = credentials or CREDENTIALS.get('tecoloco', {})
         try:
             logger.info(f"[{self.site_name}] Realizando login desde: {page.url[:80]}")
 
-            # Selectores robustos para el formulario de login de Tecoloco
-            email_sel = (
-                "input[placeholder*='Correo'], "
-                "input[type='email'], "
-                "#Email, #txtEmail"
-            )
-            pass_sel = (
-                "input[placeholder*='ontraseña'], "
-                "input[type='password'], "
-                "#Password, #txtPassword"
-            )
-            btn_sel = (
-                "button:has-text('INICIO CANDIDATOS'), "
-                "button:has-text('Iniciar sesión'), "
-                "#loginButton, "
-                "button[type='submit']"
-            )
+            # Esperar que la red esté tranquila (JS puede cargar el formulario tarde)
+            try:
+                await page.wait_for_load_state("networkidle", timeout=15000)
+            except Exception:
+                pass  # Si networkidle tarda, continuar igual
+            await asyncio.sleep(1.5)
 
-            await page.wait_for_selector(email_sel, timeout=20000, state="visible")
-            await page.fill(email_sel, creds['email'])
+            # ── Llenar email (prueba selectores uno por uno) ──
+            email_filled = False
+            for sel in [
+                "#Email", "#txtEmail",
+                "input[type='email']",
+                "input[placeholder*='Correo']",
+                "input[placeholder*='correo']",
+                "input[name*='Email']", "input[name*='email']",
+                "input[autocomplete='email']",
+            ]:
+                try:
+                    el = await page.query_selector(sel)
+                    if el and await el.is_visible():
+                        await el.fill(creds['email'])
+                        email_filled = True
+                        logger.info(f"[{self.site_name}] Email llenado con: {sel}")
+                        break
+                except Exception:
+                    continue
+
+            if not email_filled:
+                # Último recurso: primer input visible que no sea password/hidden/submit
+                all_inputs = await page.query_selector_all(
+                    "input:not([type='hidden']):not([type='submit']):not([type='password'])"
+                )
+                for inp in all_inputs:
+                    if await inp.is_visible():
+                        await inp.fill(creds['email'])
+                        email_filled = True
+                        logger.info(f"[{self.site_name}] Email llenado via fallback genérico")
+                        break
+
+            if not email_filled:
+                logger.error(f"[{self.site_name}] No se encontró campo de email")
+                return False
+
             await asyncio.sleep(random.uniform(0.4, 0.9))
 
-            await page.fill(pass_sel, creds['password'])
+            # ── Llenar contraseña ──
+            pass_filled = False
+            for sel in ["input[type='password']", "#Password", "#txtPassword"]:
+                try:
+                    el = await page.query_selector(sel)
+                    if el and await el.is_visible():
+                        await el.fill(creds['password'])
+                        pass_filled = True
+                        break
+                except Exception:
+                    continue
+
+            if not pass_filled:
+                logger.error(f"[{self.site_name}] No se encontró campo de contraseña")
+                return False
+
             await asyncio.sleep(random.uniform(0.8, 1.5))
 
-            await page.click(btn_sel)
+            # ── Click en botón de login ──
+            btn_clicked = False
+            for sel in [
+                "button:has-text('INICIO CANDIDATOS')",
+                "button:has-text('Iniciar sesión')",
+                "#loginButton",
+                "button[type='submit']",
+                "input[type='submit']",
+            ]:
+                try:
+                    el = await page.query_selector(sel)
+                    if el and await el.is_visible():
+                        await el.click()
+                        btn_clicked = True
+                        break
+                except Exception:
+                    continue
+
+            if not btn_clicked:
+                logger.error(f"[{self.site_name}] No se encontró botón de login")
+                return False
+
             await page.wait_for_load_state("domcontentloaded", timeout=30000)
             await asyncio.sleep(random.uniform(2, 3))
 
