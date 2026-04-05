@@ -41,73 +41,85 @@ class TecolocoPoster(BasePoster):
     # LOGIN VÍA HTTP  (sin browser headless)
     # ─────────────────────────────────────────────
 
-    async def _login_via_http(self, credentials: dict) -> list[dict] | None:
+    async def _load_cookies_from_db(self) -> list[dict] | None:
         """
-        Hace login mediante HTTP POST directo (aiohttp).
-        Evita la detección del navegador headless en la página de login.
-
-        Retorna la lista de cookies para inyectar en el contexto de Playwright.
+        Lee las cookies de sesión de Tecoloco almacenadas en la DB.
+        Estas cookies fueron obtenidas desde el navegador local del usuario
+        (IP residencial) para evitar el bloqueo de DigitalOcean en login.aspx.
+        
+        Retorna lista de cookies para inyectar en Playwright, o None si no hay.
         """
-        email    = credentials.get('email', '')
-        password = credentials.get('password', '')
-
         try:
-            jar = aiohttp.CookieJar(unsafe=True)
-            async with aiohttp.ClientSession(cookie_jar=jar, headers=_HEADERS) as session:
+            async with aiosqlite.connect(DB_PATH) as db:
+                async with db.execute(
+                    "SELECT cookies FROM session_cookies WHERE site = 'tecoloco'",
+                ) as cursor:
+                    row = await cursor.fetchone()
 
-                # 1. GET login page → extraer campos ocultos ASP.NET ──────────
-                async with session.get(LOGIN_URL) as resp:
-                    html = await resp.text()
+            if not row or not row[0]:
+                logger.warning(f"[{self.site_name}] Sin cookies en DB. Usa el endpoint /api/session para cargarlas.")
+                return None
 
-                vs_match  = re.search(r'id="__VIEWSTATE"\s+value="([^"]*)"', html)
-                evv_match = re.search(r'id="__EVENTVALIDATION"\s+value="([^"]*)"', html)
-                vsg_match = re.search(r'id="__VIEWSTATEGENERATOR"\s+value="([^"]*)"', html)
+            raw = row[0]
 
-                if not vs_match:
-                    # Si no hay VIEWSTATE → página de challenge / bloqueo
-                    logger.error(f"[{self.site_name}] HTTP login: no se encontró __VIEWSTATE")
-                    logger.debug(f"HTML snippet: {html[:600]}")
-                    return None
-
-                form_data = {
-                    "Email":                   email,
-                    "Password":                password,
-                    "loginButton":             "INICIO CANDIDATOS",
-                    "__VIEWSTATE":             vs_match.group(1),
-                    "__EVENTVALIDATION":       evv_match.group(1) if evv_match else "",
-                    "__VIEWSTATEGENERATOR":    vsg_match.group(1) if vsg_match else "",
-                }
-
-                # 2. POST login form ──────────────────────────────────────────
-                post_headers = {
-                    **_HEADERS,
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    "Referer": LOGIN_URL,
-                }
-                async with session.post(
-                    LOGIN_URL, data=form_data,
-                    headers=post_headers,
-                    allow_redirects=True
-                ) as resp:
-                    final_url = str(resp.url)
-
-                if "login.aspx" in final_url.lower():
-                    logger.error(f"[{self.site_name}] HTTP login falló (sigue en login). URL: {final_url}")
-                    return None
-
-                # 3. Extraer cookies de la sesión ────────────────────────────
-                cookies = []
-                for cookie in jar:
-                    cookies.append({
-                        "name":   cookie.key,
-                        "value":  cookie.value,
+            # Parsear el header de cookies ("name=value; name2=value2; ...")
+            cookie_list = []
+            for part in raw.split(";"):
+                part = part.strip()
+                if "=" not in part:
+                    continue
+                name, _, value = part.partition("=")
+                name = name.strip()
+                value = value.strip()
+                if name:
+                    cookie_list.append({
+                        "name":   name,
+                        "value":  value,
                         "domain": "www.tecoloco.com.ni",
                         "path":   "/",
                     })
 
-                logger.info(f"[{self.site_name}] ✅ HTTP Login exitoso → {final_url[:60]}  ({len(cookies)} cookies)")
-                return cookies
+            logger.info(f"[{self.site_name}] {len(cookie_list)} cookies cargadas de DB")
+            return cookie_list if cookie_list else None
 
+        except Exception as e:
+            logger.error(f"[{self.site_name}] Error leyendo cookies de DB: {e}")
+            return None
+
+    async def _login_via_http(self, credentials: dict) -> list[dict] | None:
+        """Fallback: login vía HTTP POST (sin browser headless)."""
+        import aiohttp as aio
+        email    = credentials.get('email', '')
+        password = credentials.get('password', '')
+        try:
+            jar = aio.CookieJar(unsafe=True)
+            async with aio.ClientSession(cookie_jar=jar, headers=_HEADERS) as session:
+                async with session.get(LOGIN_URL) as resp:
+                    html = await resp.text()
+                vs_match  = re.search(r'id="__VIEWSTATE"\s+value="([^"]*)"', html)
+                evv_match = re.search(r'id="__EVENTVALIDATION"\s+value="([^"]*)"', html)
+                vsg_match = re.search(r'id="__VIEWSTATEGENERATOR"\s+value="([^"]*)"', html)
+                if not vs_match:
+                    logger.error(f"[{self.site_name}] HTTP login: página sin __VIEWSTATE (posible bloqueo IP)")
+                    return None
+                form_data = {
+                    "Email": email, "Password": password,
+                    "loginButton": "INICIO CANDIDATOS",
+                    "__VIEWSTATE":          vs_match.group(1),
+                    "__EVENTVALIDATION":    evv_match.group(1) if evv_match else "",
+                    "__VIEWSTATEGENERATOR": vsg_match.group(1) if vsg_match else "",
+                }
+                async with session.post(LOGIN_URL, data=form_data, headers={
+                    **_HEADERS, "Content-Type": "application/x-www-form-urlencoded", "Referer": LOGIN_URL
+                }, allow_redirects=True) as resp:
+                    final_url = str(resp.url)
+                if "login.aspx" in final_url.lower():
+                    logger.error(f"[{self.site_name}] HTTP login falló. URL: {final_url}")
+                    return None
+                cookies = [{"name": c.key, "value": c.value, "domain": "www.tecoloco.com.ni", "path": "/"}
+                           for c in jar]
+                logger.info(f"[{self.site_name}] ✅ HTTP Login exitoso ({len(cookies)} cookies)")
+                return cookies
         except Exception as e:
             logger.error(f"[{self.site_name}] Error en HTTP login: {e}")
             return None
@@ -143,11 +155,15 @@ class TecolocoPoster(BasePoster):
                 return False, f"No se pudo extraer ID de: {job_url}"
             job_id = match.group(1)
 
-            # ── Login vía HTTP (si no tenemos cookies cacheadas) ────
+            # ── Cargar cookies (DB primario → HTTP fallback) ────────
             if not self._session_cookies:
-                cookies = await self._login_via_http(creds)
+                # 1. Intenta cookies de DB (sesión del navegador local)
+                cookies = await self._load_cookies_from_db()
+                # 2. Fallback: login HTTP (funciona si el IP no está bloqueado)
                 if not cookies:
-                    return False, "HTTP login falló — sin cookies de sesión"
+                    cookies = await self._login_via_http(creds)
+                if not cookies:
+                    return False, "No hay cookies de sesión. Usa /api/session para cargarlas desde tu navegador."
                 self._session_cookies = cookies
 
             # Inyectar cookies en el contexto del browser

@@ -294,3 +294,50 @@ async def get_stats():
         "total_new": total_new,
         "last_check": datetime.now().isoformat()
     }
+
+# ── Gestión de cookies de sesión ──────────────────────────────────────
+
+@app.post("/api/session")
+async def save_session_cookies(request: Request):
+    """
+    Recibe cookies de sesión desde el navegador local del usuario.
+    Las almacena en DB para que el poster las use al postular.
+    
+    Body JSON esperado: { "site": "tecoloco", "cookies": "COOKIE_HEADER_STRING" }
+    """
+    body = await request.json()
+    site    = body.get("site", "tecoloco")
+    cookies = body.get("cookies", "")
+    note    = body.get("note", "")
+
+    if not cookies:
+        raise HTTPException(status_code=400, detail="cookies vacías")
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            INSERT INTO session_cookies (site, cookies, updated_at, note)
+            VALUES (?, ?, datetime('now', '-6 hours'), ?)
+            ON CONFLICT(site) DO UPDATE SET
+                cookies    = excluded.cookies,
+                updated_at = excluded.updated_at,
+                note       = excluded.note
+        """, (site, cookies, note))
+        await db.commit()
+
+    logger.info(f"[session] Cookies de '{site}' actualizadas ({len(cookies)} chars)")
+    return {"ok": True, "site": site, "chars": len(cookies)}
+
+@app.get("/api/session/{site}")
+async def get_session_status(site: str):
+    """Devuelve el estado de las cookies almacenadas para un sitio."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute(
+            "SELECT site, length(cookies) as len, updated_at, note FROM session_cookies WHERE site=?",
+            (site,)
+        ) as cursor:
+            row = await cursor.fetchone()
+    if not row:
+        return {"status": "sin_cookies", "site": site}
+    return {"status": "ok", "site": site, "chars": row["len"],
+            "updated_at": row["updated_at"], "note": row["note"]}

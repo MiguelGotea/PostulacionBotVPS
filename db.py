@@ -162,6 +162,17 @@ async def init_db():
                 )
             """, (kw, kw))
 
+        # Tabla de cookies de sesión (inyectadas desde navegador local)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS session_cookies (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                site       TEXT UNIQUE NOT NULL,
+                cookies    TEXT NOT NULL,
+                updated_at TEXT DEFAULT (datetime('now', '-6 hours')),
+                note       TEXT
+            )
+        """)
+
         await db.commit()
     return True
 
