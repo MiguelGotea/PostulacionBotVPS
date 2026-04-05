@@ -46,8 +46,8 @@ class TecolocoScraper(BaseScraper):
     async def _scrape_keyword(self, page, keyword: str) -> list[dict]:
         """Escanea todas las páginas de resultados para una keyword."""
         k_encoded = keyword.replace(" ", "+")
-        # Results=100 → la mayor cantidad posible por página
-        start_url  = f"{BASE_URL}/empleos?Keywords={k_encoded}&PaisId=41&Results=100"
+        # PerPage=100 → parámetro real confirmado en Tecoloco
+        start_url  = f"{BASE_URL}/empleos?Keywords={k_encoded}&PaisId=41&PerPage=100"
 
         jobs        = []
         current_url = start_url
@@ -76,8 +76,8 @@ class TecolocoScraper(BaseScraper):
 
             # ── Paginación: buscar link "Siguiente" ──
             next_url = await self._get_next_page_url(page)
-            if not next_url or len(cards) < 10:
-                # Menos de 10 resultados = última página o sin más
+            if not next_url or len(cards) < 50:
+                # Menos de 50 resultados = última página
                 break
 
             current_url = next_url
