@@ -157,20 +157,20 @@ async def cleanup_invalid_jobs():
 
 @app.post("/retry-failed")
 async def retry_failed_jobs(site: str = Form(None)):
-    """Resetea los jobs fallidos a 'new' para que sean reintentados en el próximo ciclo."""
+    """Resetea los jobs fallidos Y no_cumple a 'new' para que sean reintentados."""
     async with aiosqlite.connect(DB_PATH) as db:
         if site:
             await db.execute(
-                "UPDATE jobs SET status = 'new', error_message = NULL, date_applied = NULL WHERE status = 'failed' AND site = ?",
+                "UPDATE jobs SET status = 'new', error_message = NULL, date_applied = NULL WHERE status IN ('failed', 'no_cumple') AND site = ?",
                 (site,)
             )
         else:
             await db.execute(
-                "UPDATE jobs SET status = 'new', error_message = NULL, date_applied = NULL WHERE status = 'failed'"
+                "UPDATE jobs SET status = 'new', error_message = NULL, date_applied = NULL WHERE status IN ('failed', 'no_cumple')"
             )
         count = db.total_changes
         await db.commit()
-    logger.info(f"Retry: {count} jobs fallidos reseteados a 'new' (site={site or 'todos'})")
+    logger.info(f"Retry: {count} jobs (failed + no_cumple) reseteados a 'new' (site={site or 'todos'})")
     msg = f"{count}+jobs+reseteados+para+reintento"
     return RedirectResponse(url=f"/applied?msg={msg}", status_code=303)
 
