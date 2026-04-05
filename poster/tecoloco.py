@@ -259,6 +259,17 @@ class TecolocoPoster(BasePoster):
                 self._session_cookies = []   # invalidar cache para próximo job
                 return False, f"Sesión inválida tras click APLICAR. URL: {page.url}"
 
+            # ── Ya aplicado anteriomente → éxito silencioso ─────────
+            try:
+                body_text = await page.inner_text("body")
+                ya_frases = ("ya has aplicado", "ya aplicaste", "ya postulaste",
+                             "ya has postulado", "ya te postulaste", "already applied")
+                if any(f in body_text.lower() for f in ya_frases):
+                    logger.info(f"[{self.site_name}] ✅ Job ya aplicado anteriormente (detectado en job page)")
+                    return True, None
+            except Exception:
+                pass
+
             # ── PASO 1: Selección de CV (/Jobs/Aplicar/{id}) ────────
             if "/jobs/aplicar/" in page.url.lower():
 
@@ -297,8 +308,27 @@ class TecolocoPoster(BasePoster):
                 btn_text = (await go_btn.inner_text()).strip()
                 logger.info(f"[{self.site_name}] Botón '{btn_text}' encontrado → aplicando")
                 await go_btn.click()
-                await page.wait_for_load_state("domcontentloaded", timeout=30000)
+                try:
+                    await page.wait_for_load_state("domcontentloaded", timeout=30000)
+                except Exception:
+                    pass  # Continuar aunque el load_state tarde
                 await asyncio.sleep(random.uniform(2, 3))
+
+                # ── Ya aplicado → detectar en la página de selección de CV ───
+                try:
+                    body_text = await page.inner_text("body")
+                    ya_frases = ("ya has aplicado", "ya aplicaste", "ya postulaste",
+                                 "ya has postulado", "ya te postulaste", "already applied")
+                    if any(f in body_text.lower() for f in ya_frases):
+                        logger.info(f"[{self.site_name}] ✅ Job ya aplicado (detectado en /Jobs/Aplicar/)")
+                        return True, None
+                except Exception:
+                    pass
+
+                # ── ApplyToJobOffer inmediato (sin preguntas) ──────────
+                if "applytojob" in page.url.lower():
+                    logger.info(f"[{self.site_name}] ✅ Postulación directa → {page.url[:80]}")
+                    return True, None
 
             # ── PASO 2: Formulario de preguntas ────────────────────
             if "applyquestions" in page.url.lower():
@@ -332,10 +362,13 @@ class TecolocoPoster(BasePoster):
                     "input[type='submit']"
                 )
                 if not submit_btn:
-                    return False, f"Botón APLICAR final no encontrado. URL: {page.url}"
+                    return False, f"Botón APLICAR final no encontrado en preguntas. URL: {page.url}"
 
                 await submit_btn.click()
-                await page.wait_for_load_state("domcontentloaded", timeout=30000)
+                try:
+                    await page.wait_for_load_state("domcontentloaded", timeout=30000)
+                except Exception:
+                    pass
                 await asyncio.sleep(3)
 
             # ── PASO 3: Verificar resultado ─────────────────────────
@@ -344,7 +377,7 @@ class TecolocoPoster(BasePoster):
             # URLs de éxito conocidas:
             # - /Jobs/ApplyToJobOffer?jobId=...  (aplicación directa sin preguntas)
             # - /Jobs/ApplyQuestions/...         (después de responder preguntas)
-            success_urls = ("applytojoboffers", "applytojoboffers", "applytojob", "confirmacion", "gracias")
+            success_urls = ("applytojob", "confirmacion", "gracias", "aplicacion-enviada")
             is_success = any(s in final_url for s in success_urls)
 
             # También verificar texto de confirmación en la página
