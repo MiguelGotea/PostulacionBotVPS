@@ -119,6 +119,37 @@
 
         </div>
     </form>
+
+    <!-- ── Keywords de búsqueda ── -->
+    <div class="keywords-section">
+        <h3>🔍 Keywords de Búsqueda</h3>
+        <p class="keywords-desc">Estas palabras definen qué empleos busca el bot para este candidato. Haz clic para activar o desactivar.</p>
+
+        <div class="keywords-grid">
+            {% for kw in profile_keywords.get(profile.id, []) %}
+            <div class="keyword-item {% if kw.is_enabled %}active{% endif %}">
+                <form method="post" action="/profile/keywords/{{ kw.id }}/toggle" style="display:inline">
+                    <button type="submit" class="keyword-pill {% if kw.is_enabled %}kw-on{% else %}kw-off{% endif %}">
+                        {% if kw.is_enabled %}✅{% else %}⏸{% endif %}
+                        #{{ kw.keyword }}
+                    </button>
+                </form>
+                <form method="post" action="/profile/keywords/{{ kw.id }}/delete" style="display:inline"
+                      onsubmit="return confirm('¿Eliminar keyword #{{ kw.keyword }}?')">
+                    <button type="submit" class="kw-delete" title="Eliminar">✕</button>
+                </form>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Agregar nueva keyword -->
+        <form method="post" action="/profile/{{ profile.id }}/keywords/add" class="kw-add-form">
+            <input class="form-input kw-add-input" type="text" name="keyword"
+                   placeholder="nueva keyword... (ej: cajera)" required maxlength="80">
+            <button type="submit" class="btn btn-apply kw-add-btn">+ Agregar</button>
+        </form>
+    </div>
+
 </div>
 {% else %}
 <div class="empty-state">

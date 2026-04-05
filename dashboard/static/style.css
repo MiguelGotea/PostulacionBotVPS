@@ -430,6 +430,97 @@ body {
     .form-row { grid-template-columns: 1fr; }
 }
 
+/* ── Keywords Section ────────────────────── */
+.keywords-section {
+    padding: 1.5rem 2rem 2rem;
+    border-top: 1px solid var(--border);
+    background: var(--bg);
+}
+
+.keywords-section h3 {
+    color: var(--primary);
+    margin-bottom: 0.25rem;
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.keywords-desc {
+    color: var(--text-light);
+    font-size: 0.85rem;
+    margin-bottom: 1rem;
+}
+
+.keywords-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+}
+
+.keyword-item {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.keyword-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.85rem;
+    border-radius: 999px;
+    border: none;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: inherit;
+}
+
+.kw-on {
+    background: #D4EFDF;
+    color: #1E8449;
+}
+.kw-on:hover { background: #A9DFBF; }
+
+.kw-off {
+    background: #F0F0F0;
+    color: #999;
+}
+.kw-off:hover { background: #E0E0E0; }
+
+.kw-delete {
+    background: none;
+    border: none;
+    color: #CCC;
+    font-size: 0.7rem;
+    cursor: pointer;
+    padding: 0.2rem 0.3rem;
+    border-radius: 50%;
+    line-height: 1;
+    transition: color 0.2s, background 0.2s;
+}
+.kw-delete:hover { color: #E74C3C; background: #FEE; }
+
+.kw-add-form {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    max-width: 480px;
+}
+
+.kw-add-input {
+    flex: 1;
+    padding: 0.5rem 0.85rem;
+    font-size: 0.85rem;
+}
+
+.kw-add-btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
 
 /* Action Bar (Historial) */
 .action-bar {

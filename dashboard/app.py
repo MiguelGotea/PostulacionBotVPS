@@ -197,10 +197,52 @@ async def profile_page(request: Request):
         db.row_factory = aiosqlite.Row
         async with db.execute("SELECT * FROM candidate_profiles ORDER BY id") as cursor:
             profiles = await cursor.fetchall()
+        # Cargar keywords por perfil
+        profile_keywords = {}
+        async with db.execute(
+            "SELECT * FROM profile_keywords ORDER BY profile_id, id"
+        ) as cursor:
+            for kw in await cursor.fetchall():
+                pid = kw["profile_id"]
+                profile_keywords.setdefault(pid, []).append(dict(kw))
+
     return templates.TemplateResponse("profile.html", {
         "request": request,
-        "profiles": profiles
+        "profiles": profiles,
+        "profile_keywords": profile_keywords
     })
+
+@app.post("/profile/keywords/{keyword_id}/toggle")
+async def toggle_keyword(keyword_id: int):
+    """Activa/desactiva una keyword de búsqueda."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            "UPDATE profile_keywords SET is_enabled = CASE WHEN is_enabled=1 THEN 0 ELSE 1 END WHERE id=?",
+            (keyword_id,)
+        )
+        await db.commit()
+    return RedirectResponse(url="/profile", status_code=303)
+
+@app.post("/profile/{profile_id}/keywords/add")
+async def add_keyword(profile_id: int, keyword: str = Form(...)):
+    """Agrega una nueva keyword al perfil."""
+    keyword = keyword.strip().lower()
+    if keyword:
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                "INSERT OR IGNORE INTO profile_keywords (profile_id, keyword, is_enabled) VALUES (?,?,1)",
+                (profile_id, keyword)
+            )
+            await db.commit()
+    return RedirectResponse(url="/profile", status_code=303)
+
+@app.post("/profile/keywords/{keyword_id}/delete")
+async def delete_keyword(keyword_id: int):
+    """Elimina una keyword del perfil."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("DELETE FROM profile_keywords WHERE id=?", (keyword_id,))
+        await db.commit()
+    return RedirectResponse(url="/profile", status_code=303)
 
 @app.post("/profile/update/{profile_id}")
 async def update_profile(

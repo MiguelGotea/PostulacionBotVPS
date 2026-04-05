@@ -2,8 +2,9 @@ import asyncio
 import logging
 import random
 import re
+import aiosqlite
 from scrapers.base import BaseScraper
-from config import KEYWORDS, PLAYWRIGHT_TIMEOUT
+from config import KEYWORDS as FALLBACK_KEYWORDS, PLAYWRIGHT_TIMEOUT, DB_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,31 @@ class TecolocoScraper(BaseScraper):
         super().__init__("tecoloco")
         self.base_url = BASE_URL
 
+    async def _get_keywords(self) -> list[str]:
+        """Carga keywords habilitadas del perfil activo en la DB."""
+        try:
+            async with aiosqlite.connect(DB_PATH) as db:
+                async with db.execute(
+                    "SELECT id FROM candidate_profiles WHERE is_active = 1 ORDER BY id LIMIT 1"
+                ) as cursor:
+                    row = await cursor.fetchone()
+                    if not row:
+                        return FALLBACK_KEYWORDS
+                    profile_id = row[0]
+
+                async with db.execute(
+                    "SELECT keyword FROM profile_keywords WHERE profile_id = ? AND is_enabled = 1 ORDER BY id",
+                    (profile_id,)
+                ) as cursor:
+                    rows = await cursor.fetchall()
+                    keywords = [r[0] for r in rows]
+                    if keywords:
+                        logger.info(f"[{self.site_name}] {len(keywords)} keywords activas desde DB")
+                        return keywords
+        except Exception as e:
+            logger.error(f"[{self.site_name}] Error cargando keywords de DB: {e}")
+        return FALLBACK_KEYWORDS
+
     # ──────────────────────────────────────────
     # Punto de entrada principal
     # ──────────────────────────────────────────
@@ -27,7 +53,8 @@ class TecolocoScraper(BaseScraper):
         page.set_default_timeout(PLAYWRIGHT_TIMEOUT)
 
         try:
-            for keyword in KEYWORDS:
+            keywords = await self._get_keywords()
+            for keyword in keywords:
                 kw_jobs = await self._scrape_keyword(page, keyword)
                 all_jobs.extend(kw_jobs)
 

@@ -138,6 +138,30 @@ async def init_db():
             "rápidamente a diferentes ambientes de trabajo.",
         ))
 
+        # Tabla de keywords por candidato
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS profile_keywords (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                profile_id INTEGER NOT NULL,
+                keyword TEXT NOT NULL,
+                is_enabled INTEGER DEFAULT 1,
+                FOREIGN KEY (profile_id) REFERENCES candidate_profiles(id)
+            )
+        """)
+
+        # Semilla: keywords de Katty (profile_id=1)
+        katty_keywords = [
+            "administración", "asistente administrativa", "atención al cliente",
+            "marketing", "recepcionista", "oficina", "secretaria", "ventas"
+        ]
+        for kw in katty_keywords:
+            await db.execute("""
+                INSERT INTO profile_keywords (profile_id, keyword, is_enabled)
+                SELECT 1, ?, 1 WHERE NOT EXISTS (
+                    SELECT 1 FROM profile_keywords WHERE profile_id = 1 AND keyword = ?
+                )
+            """, (kw, kw))
+
         await db.commit()
     return True
 
