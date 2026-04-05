@@ -191,63 +191,77 @@ class TecolocoPoster(BasePoster):
 
     async def _read_location_from_page(self, page, job_id) -> str:
         """
-        Lee la ubicación real desde la página de detalle del job y actualiza la DB.
-        Usa JavaScript en el browser para máxima fiabilidad.
-        Retorna la ubicación encontrada ('' si no hay).
+        Lee la ubicación desde el detalle del job y actualiza la DB.
+        Método 1: inner_text del body + regex Python (más fiable).
+        Método 2: page.evaluate() JS.
+        Método 3: meta og:description.
         """
         location = ''
         try:
-            # Ejecutar JS en el browser: recorrer todos los elementos y buscar "Nicaragua"
-            location = await page.evaluate("""
-                () => {
-                    // Patrón: "Ciudad, Nicaragua" — buscar en todos los nodos de texto
-                    const pattern = /([A-Za-záéíóúüñÁÉÍÓÚÜÑ][\\w\\sáéíóúüñÁÉÍÓÚÜÑ]+),\\s*Nicaragua/i;
-
-                    // 1. Probar selectores específicos de Tecoloco
-                    const selectors = [
-                        'li', 'span', 'p', 'div', 'td', 'h4', 'h3'
-                    ];
-                    for (const sel of selectors) {
-                        const els = document.querySelectorAll(sel);
-                        for (const el of els) {
-                            const text = (el.innerText || el.textContent || '').trim();
-                            // Solo texto corto que sea la ubicación (no párrafos largos)
-                            if (text.length < 80 && /nicaragua/i.test(text)) {
-                                const m = text.match(pattern);
-                                if (m) return m[0].trim();
-                            }
-                        }
-                    }
-
-                    // 2. Fallback: buscar en todo el body (texto más largo)
-                    const body = document.body.innerText || '';
-                    const m = body.match(pattern);
-                    if (m) return m[0].trim();
-
-                    return '';
-                }
-            """)
-
-            if not location:
-                # Último fallback: título de la página puede tener ciudad
-                title = await page.title()
-                m = re.search(r'([A-ZÁÉÍÓÚÑ][a-záéíóúñ ]+),?\s*Nicaragua', title, re.IGNORECASE)
+            # ── Método 1: Python regex sobre el texto visible ────────────
+            try:
+                body_text = await page.inner_text("body")
+                # Ej: "Boaco, Nicaragua" | "Managua, Nicaragua"
+                m = re.search(
+                    r'\b(Boaco|Carazo|Chinandega|Chontales|Estel[ií]|Granada|Jinotega|'
+                    r'Le[oó]n|Madriz|Managua|Masaya|Matagalpa|Nueva\s+Segovia|'
+                    r'R[ií]o\s+San\s+Juan|Rivas|RAAN|RAAS)'
+                    r'[,\s]+Nicaragua\b',
+                    body_text, re.IGNORECASE
+                )
                 if m:
                     location = m.group(0).strip()
+            except Exception:
+                pass
 
-            location = location[:120] if location else ''
+            # ── Método 2: JS evaluate (por si inner_text falla) ──────────
+            if not location:
+                try:
+                    location = await page.evaluate("""
+                        () => {
+                            const depts = ['Boaco','Carazo','Chinandega','Chontales','Estelí','Estelí',
+                                'Granada','Jinotega','León','Madriz','Managua','Masaya','Matagalpa',
+                                'Nueva Segovia','Río San Juan','Rivas','RAAN','RAAS'];
+                            const pattern = new RegExp('(' + depts.join('|') + ')[,\\\\s]+Nicaragua', 'i');
+                            const text = document.body.innerText || '';
+                            const m = text.match(pattern);
+                            return m ? m[0].trim() : '';
+                        }
+                    """) or ''
+                except Exception:
+                    pass
 
-            if location and job_id:
-                async with aiosqlite.connect(DB_PATH) as db:
-                    await db.execute(
-                        "UPDATE jobs SET location = ? WHERE id = ? AND (location IS NULL OR location = '')",
-                        (location, job_id)
+            # ── Método 3: meta og:description / title ────────────────────
+            if not location:
+                try:
+                    title = await page.title()
+                    m = re.search(
+                        r'\b(Boaco|Carazo|Chinandega|Chontales|Estel[ií]|Granada|Jinotega|'
+                        r'Le[oó]n|Madriz|Managua|Masaya|Matagalpa|Nueva\s+Segovia|'
+                        r'R[ií]o\s+San\s+Juan|Rivas|RAAN|RAAS)',
+                        title, re.IGNORECASE
                     )
-                    await db.commit()
-                    logger.info(f"[{self.site_name}] Ubicación leída: '{location}' (id={job_id})")
+                    if m:
+                        location = f"{m.group(0).strip()}, Nicaragua"
+                except Exception:
+                    pass
+
+            location = location[:120]
+
+            if location:
+                if job_id:
+                    async with aiosqlite.connect(DB_PATH) as db:
+                        await db.execute(
+                            "UPDATE jobs SET location = ? WHERE id = ? AND (location IS NULL OR location = '')",
+                            (location, job_id)
+                        )
+                        await db.commit()
+                logger.info(f"[{self.site_name}] Ubicación leída: '{location}' (id={job_id})")
+            else:
+                logger.debug(f"[{self.site_name}] No se pudo leer ubicación de: {page.url[:60]}")
 
         except Exception as e:
-            logger.debug(f"[{self.site_name}] _read_location_from_page: {e}")
+            logger.debug(f"[{self.site_name}] _read_location_from_page error: {e}")
         return location
 
     async def _login_via_http(self, credentials: dict) -> list[dict] | None:
