@@ -56,20 +56,5 @@
         </div>
     </div>
 
-    <!-- ── Acciones del Sistema ── -->
-    <div class="settings-card">
-        <h3>🛠️ Mantenimiento</h3>
-        <p>Limpieza y mantenimiento de la base de datos.</p>
-        <div class="control-actions">
-            <form action="/settings/cleanup-invalid" method="post" style="display:inline;">
-                <button type="submit" class="btn-scan"
-                    onclick="return confirm('¿Eliminar ofertas inválidas de la base de datos?')">
-                    🧹 Limpiar Ofertas Inválidas
-                </button>
-            </form>
-            <p><small>Elimina URLs de categorías o búsquedas que el bot intentó aplicar por error.</small></p>
-        </div>
-    </div>
-
 </div>
 {% endblock %}
