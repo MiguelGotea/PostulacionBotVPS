@@ -121,27 +121,58 @@ class TecolocoPoster(BasePoster):
                 return False, f"No se pudo extraer ID de: {job_url}"
             job_id = match.group(1)
 
-            # ── Navegar a la página de aplicación ──────────────────
-            aplicar_url = f"{BASE_URL}/Jobs/Aplicar/{job_id}"
-            await page.goto(aplicar_url, wait_until="domcontentloaded", timeout=60000)
-            await asyncio.sleep(random.uniform(1.5, 2.5))
+            # ── PASO 0: Ir a la página del trabajo y click APLICAR ──
+            # Flujo natural: job_page → click APLICAR → /Jobs/Aplicar/{id}
+            await page.goto(job_url, wait_until="domcontentloaded", timeout=60000)
+            await asyncio.sleep(random.uniform(2, 3))
 
-            # ── Login inline si es necesario ────────────────────────
+            # Buscar el botón APLICAR interno (no el externo .linktowebsite)
+            apply_btn = await page.query_selector(
+                "a.apply-now:not(.linktowebsite), "
+                "a#apply-btn, "
+                ".btn-apply:not(.linktowebsite), "
+                "a[href*='Jobs/Aplicar'], "
+                "a:has-text('Postularme'), "
+                "a.apply-now"   # fallback: cualquier apply-now
+            )
+
+            if not apply_btn:
+                # Intentar construir la URL directamente
+                logger.warning(f"[{self.site_name}] Botón APLICAR no encontrado en {job_url}, usando URL directa")
+                await page.goto(f"{BASE_URL}/Jobs/Aplicar/{job_id}", wait_until="domcontentloaded", timeout=60000)
+                await asyncio.sleep(random.uniform(1.5, 2.5))
+            else:
+                href = await apply_btn.get_attribute("href") or ""
+                logger.info(f"[{self.site_name}] Botón APLICAR encontrado: {href[:60]}")
+                await apply_btn.click()
+                await page.wait_for_load_state("domcontentloaded", timeout=30000)
+                await asyncio.sleep(random.uniform(2, 3))
+
+            # ── Login inline si fue redirigido a login.aspx ─────────
             if "login.aspx" in page.url.lower():
                 logged_in = await self._do_login(page, creds)
                 if not logged_in:
                     return False, "Login fallido durante apply"
 
-                # Después del login, si ReturnUrl no redirigió automáticamente,
-                # navegar manualmente a la URL de aplicación
-                if "/jobs/aplicar/" not in page.url.lower():
-                    logger.info(f"[{self.site_name}] ReturnUrl no redirigió, navegando manualmente a Jobs/Aplicar")
-                    await page.goto(aplicar_url, wait_until="domcontentloaded", timeout=60000)
+                # Después del login, volver a la página del trabajo y click APLICAR
+                await page.goto(job_url, wait_until="domcontentloaded", timeout=60000)
+                await asyncio.sleep(random.uniform(2, 3))
+
+                apply_btn2 = await page.query_selector(
+                    "a.apply-now:not(.linktowebsite), "
+                    "a[href*='Jobs/Aplicar'], "
+                    "a.apply-now"
+                )
+                if apply_btn2:
+                    await apply_btn2.click()
+                    await page.wait_for_load_state("domcontentloaded", timeout=30000)
+                    await asyncio.sleep(random.uniform(2, 3))
+                else:
+                    await page.goto(f"{BASE_URL}/Jobs/Aplicar/{job_id}", wait_until="domcontentloaded", timeout=60000)
                     await asyncio.sleep(random.uniform(1.5, 2.5))
 
-                # Si SIGUE en login después del intento, fallo definitivo
                 if "login.aspx" in page.url.lower():
-                    return False, "Login fallido, redirigido de nuevo a login.aspx"
+                    return False, "Login falló, redirigido de nuevo a login.aspx"
 
             # ── PASO 1: Selección de CV ─────────────────────────────
             if "/jobs/aplicar/" in page.url.lower():
