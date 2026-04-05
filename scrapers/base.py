@@ -20,26 +20,11 @@ class BaseScraper(abc.ABC):
     async def save_jobs(self, jobs: list[dict]) -> int:
         """
         Guarda los trabajos encontrados en esta búsqueda.
-        Flujo:
-          1. Elimina todos los status='new' de este sitio (no procesados del ciclo anterior).
-          2. Para cada URL scrapeada:
-             - Si ya existe en DB con status procesado (applied, no_cumple, etc.) → SKIP.
-             - Si es genuinamente nueva → INSERT as 'new'.
+        Los jobs 'new' ya fueron eliminados globalmente al inicio del ciclo.
+        Solo inserta URLs que no existan ya en DB (procesadas previamente).
         """
         new_jobs_count = 0
         async with aiosqlite.connect(self.db_path) as db:
-
-            # ── 1. Limpiar pendientes anteriores de este sitio ──────────
-            result = await db.execute(
-                "DELETE FROM jobs WHERE site = ? AND status = 'new'",
-                (self.site_name,)
-            )
-            deleted = result.rowcount
-            if deleted:
-                logger.info(f"[{self.site_name}] {deleted} jobs pendientes eliminados (limpieza de ciclo).")
-            await db.commit()
-
-            # ── 2. Insertar solo los realmente nuevos ───────────────────
             for job in jobs:
                 if await self.is_new_job(db, job['url']):
                     try:

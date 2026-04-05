@@ -88,7 +88,15 @@ async def _do_scan_cycle():
     logger.info(f"--- Iniciando ciclo de escaneo automático: {now_managua} ---")
 
     scrapers = get_all_scrapers()
-    
+
+    # 0. Limpiar TODOS los jobs pendientes (new) de TODOS los sitios.
+    #    Los activos se re-poblarán abajo. Los deshabilitados quedan limpios.
+    async with aiosqlite.connect(DB_PATH) as db:
+        result = await db.execute("DELETE FROM jobs WHERE status = 'new'")
+        if result.rowcount:
+            logger.info(f"Inicio de ciclo: {result.rowcount} jobs pendientes eliminados (limpieza global).")
+        await db.commit()
+
     # 1. Consultar sitios habilitados
     active_sites = []
     async with aiosqlite.connect(DB_PATH) as db:
