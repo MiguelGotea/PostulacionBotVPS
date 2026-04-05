@@ -64,33 +64,23 @@ async def applied(request: Request):
 
 @app.get("/settings", response_class=HTMLResponse)
 async def settings(request: Request):
-    """Configuración y estadísticas por sitio."""
+    """Panel de Control global — estadísticas y mantenimiento."""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("""
-            SELECT site, 
-                   COUNT(*) as total, 
+            SELECT site,
+                   COUNT(*) as total,
                    SUM(CASE WHEN status='applied' THEN 1 ELSE 0 END) as applied,
-                   SUM(CASE WHEN requires_manual=1 THEN 1 ELSE 0 END) as manual
+                   SUM(CASE WHEN status='no_cumple' THEN 1 ELSE 0 END) as no_cumple,
+                   SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) as failed,
+                   SUM(CASE WHEN status IN ('sin_departamento','departamento_no_permitido') THEN 1 ELSE 0 END) as dpto_filtrado
             FROM jobs GROUP BY site
         """) as cursor:
             stats_by_site = await cursor.fetchall()
 
-        # Obtener configuración de sitios activa
-        async with db.execute("SELECT * FROM site_configs") as cursor:
-            site_configs = await cursor.fetchall()
-            
-        # Obtener parámetros de aplicación (Salario, etc.)
-        async with db.execute("SELECT * FROM app_settings") as cursor:
-            app_settings = await cursor.fetchall()
-            app_settings_dict = {row['key']: row['value'] for row in app_settings}
-
     return templates.TemplateResponse("settings.html", {
-        "request": request, 
-        "keywords": KEYWORDS,
+        "request": request,
         "stats": stats_by_site,
-        "site_configs": site_configs,
-        "app_settings": app_settings_dict
     })
 
 @app.post("/settings/update-app")
@@ -116,14 +106,20 @@ async def toggle_site(site_name: str):
                 new_status = 0 if row[0] == 1 else 1
                 await db.execute("UPDATE site_configs SET is_enabled = ? WHERE site_name = ?", (new_status, site_name))
                 await db.commit()
-    
-    return RedirectResponse(url="/settings", status_code=303)
+
+    return RedirectResponse(url="/profile", status_code=303)
+
+@app.post("/settings/scan-all")
+async def scan_all(background_tasks: BackgroundTasks):
+    """Dispara un escaneo global en todos los portales activos."""
+    background_tasks.add_task(run_single_site_scan, None)
+    return RedirectResponse(url="/settings?msg=Escaneo+global+iniciado", status_code=303)
 
 @app.post("/settings/scan-site/{site_name}")
 async def scan_site(site_name: str, background_tasks: BackgroundTasks):
     """Dispara un escaneo manual de un portal en segundo plano."""
     background_tasks.add_task(run_single_site_scan, site_name)
-    return RedirectResponse(url="/settings?msg=Escaneo+iniciado", status_code=303)
+    return RedirectResponse(url="/profile?msg=Escaneo+de+" + site_name + "+iniciado", status_code=303)
 
 @app.post("/settings/cleanup-invalid")
 async def cleanup_invalid_jobs():
@@ -224,11 +220,18 @@ async def profile_page(request: Request):
                 pid = row["profile_id"]
                 profile_departments.setdefault(pid, []).append(dict(row))
 
+    # Cargar portales (site_configs) — globales por ahora
+    async with aiosqlite.connect(DB_PATH) as db3:
+        db3.row_factory = aiosqlite.Row
+        async with db3.execute("SELECT * FROM site_configs ORDER BY site_name") as cursor:
+            site_configs = await cursor.fetchall()
+
     return templates.TemplateResponse("profile.html", {
         "request": request,
         "profiles": profiles,
         "profile_keywords": profile_keywords,
         "profile_departments": profile_departments,
+        "site_configs": site_configs,
     })
 
 @app.post("/profile/keywords/{keyword_id}/toggle")

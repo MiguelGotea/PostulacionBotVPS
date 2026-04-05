@@ -1,75 +1,22 @@
 {% extends "base.html" %}
 
-{% block title %}Katty Jobs — Configuración{% endblock %}
+{% block title %}Katty Jobs — Panel de Control{% endblock %}
 
 {% block content %}
 <div class="content-header">
-    <h1>Configuración del Sistema</h1>
-    <p>Revisa los parámetros actuales y el estado de los scrapers.</p>
+    <h1>Panel de Control</h1>
+    <p>Estadísticas globales del sistema y acciones de mantenimiento.</p>
 </div>
 
+{% if request.query_params.get('msg') %}
+<div class="alert alert-success">
+    ✅ {{ request.query_params.get('msg')|replace('+', ' ') }}
+</div>
+{% endif %}
+
 <div class="settings-grid">
-    <div class="settings-card">
-        <h3>Keywords de Búsqueda</h3>
-        <p>Listado de términos con los que se monitorea el mercado laboral en Nicaragua.</p>
-        <div class="keyword-tags">
-            {% for kw in keywords %}
-            <span class="tag">#{{ kw }}</span>
-            {% endfor %}
-        </div>
-    </div>
 
-    {% if request.query_params.get('msg') %}
-    <div class="alert alert-success">
-        ✅ {{ request.query_params.get('msg') }}
-    </div>
-    {% endif %}
-
-    <div class="settings-card">
-        <h3>📄 Parámetros de Tecoloco</h3>
-        <p>Configura las respuestas automáticas para los cuestionarios de Tecoloco.</p>
-        <form action="/settings/update-app" method="post" class="app-settings-form">
-            <div class="form-group">
-                <label for="tecoloco_salary">💰 Expectativa Salarial (Neto):</label>
-                <input type="number" name="tecoloco_salary" id="tecoloco_salary" value="{{ app_settings.tecoloco_salary }}" class="form-input">
-            </div>
-            <div class="form-group">
-                <label for="tecoloco_working">💼 ¿Se encuentra laborando actualmente?:</label>
-                <select name="tecoloco_working" id="tecoloco_working" class="form-input">
-                    <option value="No" {% if app_settings.tecoloco_working == 'No' %}selected{% endif %}>No</option>
-                    <option value="Sí" {% if app_settings.tecoloco_working == 'Sí' %}selected{% endif %}>Sí</option>
-                </select>
-            </div>
-            <button type="submit" class="btn-primary">Guardar parámetros</button>
-        </form>
-    </div>
-
-    <div class="settings-card">
-        <h3>🌍 Gestión de Portales</h3>
-        <p>Habilita o deshabilita los sitios donde el bot buscará empleos. También puedes disparar un escaneo manual.</p>
-        <div class="site-toggle-grid">
-            {% for site in site_configs %}
-            <div class="site-toggle-item">
-                <span class="site-name">{{ site.site_name | capitalize }}</span>
-                
-                <div class="site-actions">
-                    <form action="/settings/toggle-site/{{ site.site_name }}" method="post">
-                        <button type="submit" class="toggle-btn {% if site.is_enabled %}active{% endif %}">
-                            {% if site.is_enabled %}Activo{% else %}Inactivo{% endif %}
-                        </button>
-                    </form>
-
-                    <form action="/settings/scan-site/{{ site.site_name }}" method="post">
-                        <button type="submit" class="btn-scan" title="Escanear ahora">
-                            🔍 Escanear
-                        </button>
-                    </form>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-
+    <!-- ── Estadísticas por Sitio ── -->
     <div class="settings-card stats-summary">
         <h3>📊 Estadísticas por Sitio</h3>
         <table class="simple-table">
@@ -77,8 +24,10 @@
                 <tr>
                     <th>Sitio</th>
                     <th>Encontrados</th>
-                    <th>Postulados</th>
-                    <th>Manuales</th>
+                    <th>✅ Aplicados</th>
+                    <th>⚠️ No Cumple</th>
+                    <th>🚫 Dpto.</th>
+                    <th>❌ Fallidos</th>
                 </tr>
             </thead>
             <tbody>
@@ -87,24 +36,40 @@
                     <td><span class="site-badge badge-{{ row.site|lower }}">{{ row.site }}</span></td>
                     <td>{{ row.total }}</td>
                     <td>{{ row.applied or 0 }}</td>
-                    <td>{{ row.manual or 0 }}</td>
+                    <td>{{ row.no_cumple or 0 }}</td>
+                    <td>{{ row.dpto_filtrado or 0 }}</td>
+                    <td>{{ row.failed or 0 }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 
+    <!-- ── Escaneo Global ── -->
     <div class="settings-card">
-        <h3>🛠️ Acciones del Sistema</h3>
-        <p>Mantenimiento y limpieza de la base de datos.</p>
+        <h3>🔍 Escaneo Global</h3>
+        <p>Dispara un escaneo inmediato en todos los portales activos para todos los candidatos.</p>
+        <div class="control-actions">
+            <form action="/settings/scan-all" method="post" style="display:inline">
+                <button type="submit" class="btn-scan">🔍 Escanear Todos los Portales</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- ── Acciones del Sistema ── -->
+    <div class="settings-card">
+        <h3>🛠️ Mantenimiento</h3>
+        <p>Limpieza y mantenimiento de la base de datos.</p>
         <div class="control-actions">
             <form action="/settings/cleanup-invalid" method="post" style="display:inline;">
-                <button type="submit" class="btn-scan" onclick="return confirm('¿Eliminar ofertas inválidas de Tecoloco de la base de datos?')">
+                <button type="submit" class="btn-scan"
+                    onclick="return confirm('¿Eliminar ofertas inválidas de la base de datos?')">
                     🧹 Limpiar Ofertas Inválidas
                 </button>
             </form>
             <p><small>Elimina URLs de categorías o búsquedas que el bot intentó aplicar por error.</small></p>
         </div>
     </div>
+
 </div>
 {% endblock %}

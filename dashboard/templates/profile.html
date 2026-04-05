@@ -177,4 +177,38 @@
     <p>No hay perfiles de candidatos registrados.</p>
 </div>
 {% endfor %}
+
+<!-- ── Gestión de Portales (global) ── -->
+{% if request.query_params.get('msg') %}
+<div class="alert-success" style="margin:1rem 0">✅ {{ request.query_params.get('msg')|replace('+', ' ') }}</div>
+{% endif %}
+
+<div class="keywords-section" style="margin-top:2rem">
+    <h3>🌍 Gestión de Portales</h3>
+    <p class="keywords-desc">
+        Activa o desactiva los portales donde el bot busca empleos.
+        También puedes disparar un escaneo inmediato por portal.
+    </p>
+
+    <div class="site-toggle-grid">
+        {% for site in site_configs %}
+        <div class="site-toggle-item">
+            <span class="site-name">{{ site.site_name | capitalize }}</span>
+            <div class="site-actions">
+                <form action="/settings/toggle-site/{{ site.site_name }}" method="post">
+                    <button type="submit" class="toggle-btn {% if site.is_enabled %}active{% endif %}">
+                        {% if site.is_enabled %}✅ Activo{% else %}⏸ Inactivo{% endif %}
+                    </button>
+                </form>
+                <form action="/settings/scan-site/{{ site.site_name }}" method="post">
+                    <button type="submit" class="btn-scan" title="Escanear ahora">
+                        🔍 Escanear
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+
 {% endblock %}
