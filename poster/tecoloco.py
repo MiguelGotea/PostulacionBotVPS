@@ -55,20 +55,20 @@ class TecolocoPoster(BasePoster):
                 pass  # Si networkidle tarda, continuar igual
             await asyncio.sleep(1.5)
 
-            # ── Llenar email (prueba selectores uno por uno) ──
+            # ── Llenar email (tipo 'text' confirmado en Tecoloco, NO 'email') ──
             email_filled = False
             for sel in [
-                "#Email", "#txtEmail",
+                "#Email",                         # selector directo, más seguro
+                "#txtEmail",
+                "input[name='Email']",             # por name también
+                "input[type='text'][placeholder*='Correo']",
                 "input[type='email']",
-                "input[placeholder*='Correo']",
-                "input[placeholder*='correo']",
-                "input[name*='Email']", "input[name*='email']",
-                "input[autocomplete='email']",
+                "input[name*='Email']",
             ]:
                 try:
                     el = await page.query_selector(sel)
-                    if el and await el.is_visible():
-                        await el.fill(creds['email'])
+                    if el:
+                        await el.fill(creds['email'])  # sin is_visible() — puede estar oculto en headless
                         email_filled = True
                         logger.info(f"[{self.site_name}] Email llenado con: {sel}")
                         break
@@ -76,16 +76,18 @@ class TecolocoPoster(BasePoster):
                     continue
 
             if not email_filled:
-                # Último recurso: primer input visible que no sea password/hidden/submit
+                # Último recurso: primer input no-password visible
                 all_inputs = await page.query_selector_all(
                     "input:not([type='hidden']):not([type='submit']):not([type='password'])"
                 )
                 for inp in all_inputs:
-                    if await inp.is_visible():
+                    try:
                         await inp.fill(creds['email'])
                         email_filled = True
                         logger.info(f"[{self.site_name}] Email llenado via fallback genérico")
                         break
+                    except Exception:
+                        continue
 
             if not email_filled:
                 logger.error(f"[{self.site_name}] No se encontró campo de email")
@@ -95,10 +97,10 @@ class TecolocoPoster(BasePoster):
 
             # ── Llenar contraseña ──
             pass_filled = False
-            for sel in ["input[type='password']", "#Password", "#txtPassword"]:
+            for sel in ["#Password", "#txtPassword", "input[type='password']"]:
                 try:
                     el = await page.query_selector(sel)
-                    if el and await el.is_visible():
+                    if el:
                         await el.fill(creds['password'])
                         pass_filled = True
                         break
@@ -184,14 +186,11 @@ class TecolocoPoster(BasePoster):
             await page.goto(job_url, wait_until="domcontentloaded", timeout=60000)
             await asyncio.sleep(random.uniform(2, 3))
 
-            # Buscar el botón APLICAR interno (no el externo .linktowebsite)
+            # Buscar el botón APLICAR — en Tecoloco tiene clase 'apply-now linktowebsite'
             apply_btn = await page.query_selector(
-                "a.apply-now:not(.linktowebsite), "
-                "a#apply-btn, "
-                ".btn-apply:not(.linktowebsite), "
+                "a.apply-now, "            # captura tanto la variante con y sin linktowebsite
                 "a[href*='Jobs/Aplicar'], "
-                "a:has-text('Postularme'), "
-                "a.apply-now"   # fallback: cualquier apply-now
+                "a:has-text('Postularme')"
             )
 
             if not apply_btn:
@@ -217,9 +216,8 @@ class TecolocoPoster(BasePoster):
                 await asyncio.sleep(random.uniform(2, 3))
 
                 apply_btn2 = await page.query_selector(
-                    "a.apply-now:not(.linktowebsite), "
-                    "a[href*='Jobs/Aplicar'], "
-                    "a.apply-now"
+                    "a.apply-now, "
+                    "a[href*='Jobs/Aplicar']"
                 )
                 if apply_btn2:
                     await apply_btn2.click()
