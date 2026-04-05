@@ -145,30 +145,26 @@ async def _do_scan_cycle():
         for job in to_apply:
             jobs_by_site[job['site']].append(job)
 
-        # ── Tecoloco: sesión única de login para todo el ciclo ──
+        # ── Tecoloco: un único browser para todo el ciclo ──
         if 'tecoloco' in jobs_by_site:
             tecoloco_poster = TecolocoPoster()
+            tecoloco_creds  = CREDENTIALS.get('tecoloco', {})
             async with async_playwright() as p:
                 browser, context = await tecoloco_poster.get_browser_context(p)
                 page = await context.new_page()
                 try:
-                    logged_in = await tecoloco_poster.login_once(page, CREDENTIALS.get('tecoloco'))
-                    if not logged_in:
-                        logger.error("[tecoloco] Login falló — saltando todas las postulaciones de tecoloco")
-                        for job in jobs_by_site['tecoloco']:
-                            await tecoloco_poster.mark_applied(job['id'], False, "Login fallido al inicio del ciclo")
-                    else:
-                        for job in jobs_by_site['tecoloco']:
-                            try:
-                                result = await tecoloco_poster.apply(page, job['url'])
-                                success, error_msg = result if isinstance(result, tuple) else (result, None)
-                                await tecoloco_poster.mark_applied(job['id'], success, error_msg)
-                                if success:
-                                    applied_successfully.append(dict(job))
-                                await asyncio.sleep(random.uniform(3, 6))  # pausa entre postulaciones
-                            except Exception as e:
-                                logger.error(f"Error en tecoloco job id={job['id']}: {e}")
-                                await tecoloco_poster.mark_applied(job['id'], False, str(e))
+                    for job in jobs_by_site['tecoloco']:
+                        try:
+                            # apply() hace login inline si la sesión no está activa
+                            result = await tecoloco_poster.apply(page, job['url'], tecoloco_creds)
+                            success, error_msg = result if isinstance(result, tuple) else (result, None)
+                            await tecoloco_poster.mark_applied(job['id'], success, error_msg)
+                            if success:
+                                applied_successfully.append(dict(job))
+                            await asyncio.sleep(random.uniform(3, 6))
+                        except Exception as e:
+                            logger.error(f"Error en tecoloco job id={job['id']}: {e}")
+                            await tecoloco_poster.mark_applied(job['id'], False, str(e))
                 finally:
                     await browser.close()
 

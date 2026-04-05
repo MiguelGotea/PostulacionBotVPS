@@ -1,13 +1,18 @@
 """
-poster/tecoloco.py — Flujo completo de postulación en Tecoloco.com.ni
+poster/tecoloco.py — Flujo de postulación en Tecoloco.com.ni
 
-Flujo:
-  1. login_once() — Login único al inicio del ciclo (una sola vez por sesión)
-  2. apply(page, job_url) — Por cada oferta:
-       a. goto(job_url) → click a.apply-now
-       b. /Jobs/Aplicar/{id} → seleccionar CV → detectar no_cumple → click goToQuestions
-       c. /application/ApplyQuestions → recopilar preguntas → Gemini AI → submit
-       d. Detectar confirmación de éxito
+Estrategia de sesión (ReturnUrl):
+  Para cada oferta:
+    1. Ir directo a /Jobs/Aplicar/{id}
+    2. Si redirige a login.aspx?ReturnUrl=... → hacer login AHORA
+       → Tecoloco redirige automáticamente de vuelta a /Jobs/Aplicar/{id}
+    3. Selección de CV → detección no_cumple → IR A PREGUNTAS
+    4. Formulario de preguntas → Gemini AI → APLICAR
+
+Ventaja vs login_once():
+  - No depende de que la sesión persista entre navegaciones
+  - El primer job hace el login; los siguientes reutilizan la cookie
+  - Si la sesión expira a mitad del ciclo, se re-loguea automáticamente
 """
 import asyncio
 import logging
@@ -21,7 +26,7 @@ from config import CREDENTIALS, PLAYWRIGHT_TIMEOUT, DB_PATH
 
 logger = logging.getLogger(__name__)
 
-BASE_URL = "https://www.tecoloco.com.ni"
+BASE_URL  = "https://www.tecoloco.com.ni"
 LOGIN_URL = f"{BASE_URL}/login.aspx"
 
 
@@ -31,94 +36,120 @@ class TecolocoPoster(BasePoster):
         super().__init__("tecoloco")
 
     # ─────────────────────────────────────────────
-    # LOGIN ÚNICO (al inicio del ciclo)
+    # LOGIN EMBEBIDO (se activa cuando necesario)
     # ─────────────────────────────────────────────
 
-    async def login_once(self, page, credentials=None) -> bool:
+    async def _do_login(self, page, credentials: dict) -> bool:
         """
-        Hace login UNA sola vez al comienzo del ciclo de postulaciones.
-        Mantener la misma page/context activa durante todas las postulaciones
-        evita que se vuelva a pedir login en cada oferta.
+        Hace login desde la página actual (que ya debe ser login.aspx).
+        El ReturnUrl en la URL hará que Tecoloco redirija automáticamente
+        a /Jobs/Aplicar/{id} tras el login exitoso.
         """
-        creds = credentials or CREDENTIALS['tecoloco']
+        creds = credentials or CREDENTIALS.get('tecoloco', {})
         try:
-            logger.info(f"[{self.site_name}] Iniciando sesión en {LOGIN_URL}")
-            await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
-            await asyncio.sleep(random.uniform(1.5, 3))
+            logger.info(f"[{self.site_name}] Realizando login desde: {page.url[:80]}")
 
-            # Esperar campo de email con paciencia (Akamai puede tardar)
-            email_sel = "#Email, input[type='email'], #txtEmail"
-            await page.wait_for_selector(email_sel, timeout=60000, state="visible")
+            # Selectores robustos para el formulario de login de Tecoloco
+            email_sel = (
+                "input[placeholder*='Correo'], "
+                "input[type='email'], "
+                "#Email, #txtEmail"
+            )
+            pass_sel = (
+                "input[placeholder*='ontraseña'], "
+                "input[type='password'], "
+                "#Password, #txtPassword"
+            )
+            btn_sel = (
+                "button:has-text('INICIO CANDIDATOS'), "
+                "button:has-text('Iniciar sesión'), "
+                "#loginButton, "
+                "button[type='submit']"
+            )
 
-            # Tipeo humano
+            await page.wait_for_selector(email_sel, timeout=20000, state="visible")
             await page.fill(email_sel, creds['email'])
-            await asyncio.sleep(random.uniform(0.5, 1.2))
-            await page.fill("#Password, #txtPassword", creds['password'])
-            await asyncio.sleep(random.uniform(1, 2))
+            await asyncio.sleep(random.uniform(0.4, 0.9))
 
-            # Click en login
-            await page.click("#loginButton, button[type='submit']")
+            await page.fill(pass_sel, creds['password'])
+            await asyncio.sleep(random.uniform(0.8, 1.5))
+
+            await page.click(btn_sel)
             await page.wait_for_load_state("domcontentloaded", timeout=30000)
-            await asyncio.sleep(2)
+            await asyncio.sleep(random.uniform(2, 3))
 
-            # Verificar éxito: ya no estamos en login.aspx
-            if "login.aspx" not in page.url.lower():
-                logger.info(f"[{self.site_name}] ✅ Login exitoso. Sesión activa.")
-                return True
-            else:
-                logger.error(f"[{self.site_name}] ❌ Login falló — sigue en: {page.url}")
+            if "login.aspx" in page.url.lower():
+                logger.error(f"[{self.site_name}] ❌ Login falló — aún en login.aspx")
                 return False
 
+            logger.info(f"[{self.site_name}] ✅ Login exitoso → {page.url[:80]}")
+            return True
+
         except Exception as e:
-            logger.error(f"[{self.site_name}] Error en login_once: {e}")
+            logger.error(f"[{self.site_name}] Error en _do_login: {e}")
             return False
 
     # ─────────────────────────────────────────────
-    # POSTULACIÓN (una por oferta, misma sesión)
+    # POSTULACIÓN PRINCIPAL
     # ─────────────────────────────────────────────
 
     async def apply(self, page, job_url, credentials=None):
         """
-        Aplica a una oferta individual. Asume sesión activa (login_once ya ejecutado).
-        
-        Flujo directo:
-          1. Extrae el job_id de la URL (/NNNNN/puesto.aspx → NNNNN)
-          2. Navega directamente a /Jobs/Aplicar/{job_id} (salta el click en APLICAR)
-          3. Selección de CV + detección no_cumple
-          4. IR A PREGUNTAS → formulario → submit
-        
+        Aplica a una oferta. Maneja el login inline si es necesario.
+
+        Flujo:
+          1. Extrae job_id de la URL
+          2. Navega a /Jobs/Aplicar/{id}
+          3. Si redirige a login.aspx → hace login → ReturnUrl lleva de vuelta
+          4. Selección de CV
+          5. Preguntas → Gemini AI
+          6. Submit final
+
         Returns:
-            (True, None)              → Éxito
-            (False, 'no_cumple: X')   → CV no cumple requisitos
-            (False, 'mensaje')        → Fallo técnico
+            (True,  None)             → Éxito
+            (False, 'no_cumple: X')  → No cumple requisitos
+            (False, 'mensaje error') → Fallo técnico
         """
+        creds = credentials or CREDENTIALS.get('tecoloco', {})
+
         try:
             logger.info(f"[{self.site_name}] Aplicando a: {job_url}")
 
-            # ── Extraer job_id numérico de la URL ──
-            # /1066134/asistente-administrativo.aspx → 1066134
+            # ── Extraer job_id ──────────────────────────────────────
             match = re.search(r'/(\d{4,})/', job_url)
             if not match:
-                return False, f"No se pudo extraer ID de la URL: {job_url}"
+                return False, f"No se pudo extraer ID de: {job_url}"
             job_id = match.group(1)
 
-            # ── Ir directamente a la página de selección de CV ──
+            # ── Navegar a la página de aplicación ──────────────────
             aplicar_url = f"{BASE_URL}/Jobs/Aplicar/{job_id}"
             await page.goto(aplicar_url, wait_until="domcontentloaded", timeout=60000)
-            await asyncio.sleep(random.uniform(2, 3))
+            await asyncio.sleep(random.uniform(1.5, 2.5))
 
-            # Si la sesión expiró, redirige a login
+            # ── Login inline si es necesario ────────────────────────
             if "login.aspx" in page.url.lower():
-                return False, "Sesión expirada al navegar a Jobs/Aplicar"
+                logged_in = await self._do_login(page, creds)
+                if not logged_in:
+                    return False, "Login fallido durante apply"
 
-            # ── PASO 1: Selección de CV (/Jobs/Aplicar/{id}) ──
+                # Después del login, si ReturnUrl no redirigió automáticamente,
+                # navegar manualmente a la URL de aplicación
+                if "/jobs/aplicar/" not in page.url.lower():
+                    logger.info(f"[{self.site_name}] ReturnUrl no redirigió, navegando manualmente a Jobs/Aplicar")
+                    await page.goto(aplicar_url, wait_until="domcontentloaded", timeout=60000)
+                    await asyncio.sleep(random.uniform(1.5, 2.5))
+
+                # Si SIGUE en login después del intento, fallo definitivo
+                if "login.aspx" in page.url.lower():
+                    return False, "Login fallido, redirigido de nuevo a login.aspx"
+
+            # ── PASO 1: Selección de CV ─────────────────────────────
             if "/jobs/aplicar/" in page.url.lower():
 
-                # Seleccionar el primer CV (puede venir ya seleccionado)
+                # Seleccionar primer CV disponible
                 cv_radio = await page.query_selector("input[name='CurriculoId']")
                 if cv_radio:
-                    is_checked = await cv_radio.is_checked()
-                    if not is_checked:
+                    if not await cv_radio.is_checked():
                         await cv_radio.click()
                     await asyncio.sleep(0.5)
 
@@ -129,40 +160,40 @@ class TecolocoPoster(BasePoster):
                         texto = (await alert_el.inner_text()).strip().lower()
                         if "no cumple" in texto or "requisito" in texto:
                             motivo = re.sub(r'\s+', ' ', texto)[:300]
-                            logger.info(f"[{self.site_name}] no_cumple detectado: {motivo[:80]}")
+                            logger.info(f"[{self.site_name}] no_cumple: {motivo[:80]}")
                             return False, f"no_cumple: {motivo}"
 
-                # Click en "IR A PREGUNTAS"
+                # Click en "IR A PREGUNTAS" (o APLICAR directo si no hay preguntas)
                 go_btn = await page.query_selector(
                     "button#goToQuestions, "
                     "button:has-text('IR A PREGUNTAS'), "
                     "a:has-text('IR A PREGUNTAS')"
                 )
-                # Fallback: puede existir botón APLICAR directo (sin preguntas)
                 if not go_btn:
                     go_btn = await page.query_selector(
-                        "button:has-text('APLICAR'), button#applyButton, "
+                        "button:has-text('APLICAR'), "
+                        "button#applyButton, "
                         "input[type='submit']"
                     )
 
                 if not go_btn:
-                    return False, f"Botón para continuar no encontrado. URL: {page.url}"
+                    return False, f"Botón continuar no encontrado en: {page.url}"
 
                 await go_btn.click()
                 await page.wait_for_load_state("domcontentloaded", timeout=30000)
                 await asyncio.sleep(random.uniform(2, 3))
 
-            # ── PASO 2: Formulario de preguntas (/application/ApplyQuestions) ──
+            # ── PASO 2: Formulario de preguntas ────────────────────
             if "applyquestions" in page.url.lower():
 
-                profile = await self.get_candidate_profile()
-                labels   = await page.query_selector_all("form label, label")
+                profile   = await self.get_candidate_profile()
+                labels    = await page.query_selector_all("form label, label")
                 textareas = await page.query_selector_all("textarea")
 
                 questions = []
                 for i, textarea in enumerate(textareas):
-                    ta_id   = await textarea.get_attribute("id") or f"q_{i}"
-                    q_text  = ""
+                    ta_id  = await textarea.get_attribute("id") or f"q_{i}"
+                    q_text = ""
                     if i < len(labels):
                         q_text = (await labels[i].inner_text()).strip()
                     questions.append({"id": ta_id, "text": q_text})
@@ -179,7 +210,6 @@ class TecolocoPoster(BasePoster):
                                 await el.fill(ans)
                                 await asyncio.sleep(random.uniform(0.4, 1.0))
 
-                # Submit — el botón en la pantalla real dice "APLICAR"
                 submit_btn = await page.query_selector(
                     "button:has-text('APLICAR'), "
                     "button#applyButton, "
@@ -193,23 +223,25 @@ class TecolocoPoster(BasePoster):
                 await page.wait_for_load_state("domcontentloaded", timeout=30000)
                 await asyncio.sleep(3)
 
-            # ── PASO 3: Verificar resultado ──
+            # ── PASO 3: Verificar resultado ─────────────────────────
             final_url = page.url.lower()
             if "login.aspx" in final_url or "error" in final_url:
-                return False, f"Error tras submit. URL final: {page.url}"
+                return False, f"Error tras submit. URL: {page.url}"
 
-            logger.info(f"[{self.site_name}] ✅ Postulación enviada. URL final: {page.url}")
+            logger.info(f"[{self.site_name}] ✅ Postulación enviada → {page.url[:80]}")
             return True, None
 
         except Exception as e:
             logger.error(f"[{self.site_name}] Excepción en apply(): {e}")
             return False, f"Excepción: {str(e)}"
 
-
     # ─────────────────────────────────────────────
     # COMPATIBILIDAD CON BASE CLASS
     # ─────────────────────────────────────────────
 
     async def login(self, page, credentials) -> bool:
-        """Compatibilidad con BasePoster — el login real es login_once()."""
-        return await self.login_once(page, credentials)
+        return await self._do_login(page, credentials)
+
+    async def login_once(self, page, credentials=None) -> bool:
+        """Deprecated: mantenido para compatibilidad. El login ahora es inline en apply()."""
+        return await self._do_login(page, credentials or CREDENTIALS.get('tecoloco', {}))
