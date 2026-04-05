@@ -21,51 +21,21 @@ templates = Jinja2Templates(directory="dashboard/templates")
 # de hilos/threading con aiosqlite (RuntimeError: threads can only be started once)
 
 @app.get("/", response_class=HTMLResponse)
-async def index(request: Request, site: str = None):
-    """Página principal con ofertas nuevas (últimos 3 días)."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        query = """
-            SELECT * FROM jobs
-            WHERE status = 'new'
-              AND date_found >= datetime('now', '-3 days')
-        """
-        params = []
-
-        if site:
-            query += " AND site = ?"
-            params.append(site)
-
-        query += " ORDER BY date_found DESC LIMIT 100"
-        async with db.execute(query, params) as cursor:
-            jobs = await cursor.fetchall()
-
-        # Contador: total 'new' recientes (últimos 3 días)
-        count_query = "SELECT COUNT(*) FROM jobs WHERE status = 'new' AND date_found >= datetime('now', '-3 days')"
-        count_params = []
-        if site:
-            count_query += " AND site = ?"
-            count_params.append(site)
-        async with db.execute(count_query, count_params) as cursor:
-            row = await cursor.fetchone()
-            total_new = row[0] if row else 0
-
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "jobs": jobs,
-        "total_new": total_new,
-        "current_site": site
-    })
+async def index(request: Request):
+    return RedirectResponse(url="/applied", status_code=302)
 
 @app.get("/applied", response_class=HTMLResponse)
 async def applied(request: Request):
-    """Historial de postulaciones."""
+    """Vista completa de todos los jobs — cola, historial y rechazados."""
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute("""
-            SELECT * FROM jobs 
-            WHERE status NOT IN ('new', 'ignored', 'applying')
-            ORDER BY date_applied DESC LIMIT 200
+            SELECT * FROM jobs
+            WHERE status NOT IN ('ignored')
+            ORDER BY
+                CASE WHEN status = 'new' THEN 0 ELSE 1 END,
+                COALESCE(date_applied, date_found) DESC
+            LIMIT 500
         """) as cursor:
             jobs = await cursor.fetchall()
 

@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}Katty Jobs — Historial{% endblock %}
+{% block title %}Katty Jobs — Postulaciones{% endblock %}
 
 {% block content %}
 <div class="content-header">
-    <h1>Historial de Postulaciones</h1>
-    <p>Revisa el estado de las postulaciones realizadas automáticamente.</p>
+    <h1>Postulaciones</h1>
+    <p>Vista completa: cola de espera, historial y rechazados.</p>
 </div>
 
 {% if request.query_params.get('msg') %}
@@ -20,16 +20,47 @@
     <form method="post" action="/reintentar-rechazados" style="display:inline">
         <button type="submit" class="btn-retry btn-retry-all">🔄 Reintentar Todos los Rechazados</button>
     </form>
+    <span id="row-count" style="margin-left:1rem;font-size:.85rem;color:#666"></span>
+</div>
+
+<!-- Filtros -->
+<div class="filters-bar" style="gap:.75rem;flex-wrap:wrap;margin-bottom:1rem">
+    <input id="f-title"    type="text"   placeholder="🔍 Puesto..."   oninput="filterTable()" class="form-input" style="width:160px">
+    <input id="f-company"  type="text"   placeholder="🏢 Empresa..."  oninput="filterTable()" class="form-input" style="width:150px">
+    <select id="f-dept"    onchange="filterTable()" class="form-input" style="width:140px">
+        <option value="">📍 Dpto. (todos)</option>
+        <option>Managua</option><option>León</option><option>Masaya</option>
+        <option>Chinandega</option><option>Granada</option><option>Estelí</option>
+        <option>Matagalpa</option><option>Jinotega</option><option>Carazo</option>
+        <option>Rivas</option><option>Boaco</option><option>Chontales</option>
+        <option>Madriz</option><option>Nueva Segovia</option><option>Río San Juan</option>
+        <option>RAAN</option><option>RAAS</option>
+    </select>
+    <select id="f-site"   onchange="filterTable()" class="form-input" style="width:130px">
+        <option value="">🌐 Sitio (todos)</option>
+        <option>tecoloco</option><option>computrabajo</option>
+        <option>opcionempleo</option><option>linkedin</option>
+    </select>
+    <select id="f-status" onchange="filterTable()" class="form-input" style="width:170px">
+        <option value="">📊 Estado (todos)</option>
+        <option value="new">⏳ En Cola</option>
+        <option value="applied">✅ Aplicado</option>
+        <option value="no_cumple">⚠️ No Cumple</option>
+        <option value="departamento_no_permitido">🚫 Dpto. no permitido</option>
+        <option value="sin_departamento">📍 Sin Dpto.</option>
+        <option value="failed">❌ Fallido</option>
+    </select>
+    <button onclick="clearFilters()" class="btn-scan" style="padding:.45rem .9rem">✖ Limpiar</button>
 </div>
 
 <div class="table-container">
-    <table class="data-table">
+    <table class="data-table" id="jobs-table">
         <thead>
             <tr>
-                <th>Fecha Postulada</th>
+                <th>Fecha</th>
                 <th>Puesto</th>
                 <th>Empresa</th>
-                <th>Ubicación</th>
+                <th>Dpto.</th>
                 <th>Sitio</th>
                 <th>Estado</th>
                 <th>Detalle</th>
@@ -38,15 +69,24 @@
         </thead>
         <tbody>
             {% for job in jobs %}
-            <tr>
-                <td>{{ job.date_applied }}</td>
+            <tr
+                data-title="{{ (job.title or '')|lower }}"
+                data-company="{{ (job.company or '')|lower }}"
+                data-dept="{{ (job.location or '').split(',')[0]|lower }}"
+                data-site="{{ (job.site or '')|lower }}"
+                data-status="{{ job.status or '' }}"
+            >
+                <td style="white-space:nowrap;font-size:.8rem">
+                    {{ (job.date_applied or job.date_found or '')[:16] }}
+                </td>
                 <td>{{ job.title }}</td>
                 <td>{{ job.company }}</td>
                 <td>{{ (job.location or '').split(',')[0] or '-' }}</td>
                 <td><span class="site-badge badge-{{ job.site|lower }}">{{ job.site }}</span></td>
                 <td>
                     <span class="status-badge status-{{ job.status|lower|replace('_','-') }}">
-                        {% if job.status == 'applied' %}✅ Aplicado
+                        {% if job.status == 'new' %}⏳ En Cola
+                        {% elif job.status == 'applied' %}✅ Aplicado
                         {% elif job.status == 'no_cumple' %}⚠️ No Cumple
                         {% elif job.status == 'failed' %}❌ Fallido
                         {% elif job.status == 'sin_departamento' %}📍 Sin Dpto.
@@ -58,11 +98,41 @@
                 <td><a href="{{ job.url }}" target="_blank">Ver</a></td>
             </tr>
             {% else %}
-            <tr>
-                <td colspan="8" class="no-results">No se han realizado postulaciones todavía.</td>
-            </tr>
+            <tr><td colspan="8" class="no-results">No hay registros.</td></tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
+
+<script>
+function filterTable() {
+    const title   = document.getElementById('f-title').value.toLowerCase();
+    const company = document.getElementById('f-company').value.toLowerCase();
+    const dept    = document.getElementById('f-dept').value.toLowerCase();
+    const site    = document.getElementById('f-site').value.toLowerCase();
+    const status  = document.getElementById('f-status').value;
+
+    let visible = 0;
+    document.querySelectorAll('#jobs-table tbody tr[data-status]').forEach(row => {
+        const match =
+            (!title   || row.dataset.title.includes(title))   &&
+            (!company || row.dataset.company.includes(company)) &&
+            (!dept    || row.dataset.dept.includes(dept))      &&
+            (!site    || row.dataset.site === site)             &&
+            (!status  || row.dataset.status === status);
+        row.style.display = match ? '' : 'none';
+        if (match) visible++;
+    });
+    document.getElementById('row-count').textContent = visible + ' registros';
+}
+
+function clearFilters() {
+    ['f-title','f-company'].forEach(id => document.getElementById(id).value = '');
+    ['f-dept','f-site','f-status'].forEach(id => document.getElementById(id).value = '');
+    filterTable();
+}
+
+// Inicializar contador
+filterTable();
+</script>
 {% endblock %}

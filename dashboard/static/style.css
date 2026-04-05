@@ -325,6 +325,7 @@ body {
     font-weight: 700;
 }
 
+.status-new                   { background: #E8F8F5; color: #117A65; }
 .status-applied               { background: #D4EFDF; color: #1E8449; }
 .status-failed                { background: #FADBD8; color: #943126; }
 .status-no-cumple             { background: #FEF3CD; color: #856404; }
