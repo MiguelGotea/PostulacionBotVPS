@@ -42,7 +42,7 @@
                 <td>{{ job.date_applied }}</td>
                 <td>{{ job.title }}</td>
                 <td>{{ job.company }}</td>
-                <td>{{ job.location or '-' }}</td>
+                <td>{{ (job.location or '').split(',')[0] or '-' }}</td>
                 <td><span class="site-badge badge-{{ job.site|lower }}">{{ job.site }}</span></td>
                 <td>
                     <span class="status-badge status-{{ job.status|lower|replace('_','-') }}">

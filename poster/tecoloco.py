@@ -192,36 +192,50 @@ class TecolocoPoster(BasePoster):
     async def _read_location_from_page(self, page, job_id) -> str:
         """
         Lee la ubicación real desde la página de detalle del job y actualiza la DB.
+        Usa JavaScript en el browser para máxima fiabilidad.
         Retorna la ubicación encontrada ('' si no hay).
         """
         location = ''
         try:
-            # Tecoloco muestra la ubicación con un icono de pin: "Masaya, Nicaragua"
-            for sel in [
-                ".job-location",
-                "li:has(i.icon-map-marker)",
-                "li:has(.fa-map-marker-alt)",
-                "span:has-text('Nicaragua')",
-                "[class*='location']",
-                ".job-detail-location",
-            ]:
-                el = await page.query_selector(sel)
-                if el:
-                    raw = (await el.inner_text()).strip()
-                    raw = re.sub(r'^[\s\W]+', '', raw).strip()
-                    if raw and 'nicaragua' in raw.lower():
-                        location = raw[:120]
-                        break
+            # Ejecutar JS en el browser: recorrer todos los elementos y buscar "Nicaragua"
+            location = await page.evaluate("""
+                () => {
+                    // Patrón: "Ciudad, Nicaragua" — buscar en todos los nodos de texto
+                    const pattern = /([A-Za-záéíóúüñÁÉÍÓÚÜÑ][\\w\\sáéíóúüñÁÉÍÓÚÜÑ]+),\\s*Nicaragua/i;
 
-            # Fallback: buscar patrón "X, Nicaragua" en toda la página
+                    // 1. Probar selectores específicos de Tecoloco
+                    const selectors = [
+                        'li', 'span', 'p', 'div', 'td', 'h4', 'h3'
+                    ];
+                    for (const sel of selectors) {
+                        const els = document.querySelectorAll(sel);
+                        for (const el of els) {
+                            const text = (el.innerText || el.textContent || '').trim();
+                            // Solo texto corto que sea la ubicación (no párrafos largos)
+                            if (text.length < 80 && /nicaragua/i.test(text)) {
+                                const m = text.match(pattern);
+                                if (m) return m[0].trim();
+                            }
+                        }
+                    }
+
+                    // 2. Fallback: buscar en todo el body (texto más largo)
+                    const body = document.body.innerText || '';
+                    const m = body.match(pattern);
+                    if (m) return m[0].trim();
+
+                    return '';
+                }
+            """)
+
             if not location:
-                try:
-                    body = await page.inner_text("body")
-                    m = re.search(r'([A-ZÁÉÍÓÚÑ][a-záéíóúñ ]+),\s*Nicaragua', body)
-                    if m:
-                        location = m.group(0)[:120]
-                except Exception:
-                    pass
+                # Último fallback: título de la página puede tener ciudad
+                title = await page.title()
+                m = re.search(r'([A-ZÁÉÍÓÚÑ][a-záéíóúñ ]+),?\s*Nicaragua', title, re.IGNORECASE)
+                if m:
+                    location = m.group(0).strip()
+
+            location = location[:120] if location else ''
 
             if location and job_id:
                 async with aiosqlite.connect(DB_PATH) as db:
@@ -230,7 +244,8 @@ class TecolocoPoster(BasePoster):
                         (location, job_id)
                     )
                     await db.commit()
-                    logger.info(f"[{self.site_name}] Ubicación actualizada: '{location}' (id={job_id})")
+                    logger.info(f"[{self.site_name}] Ubicación leída: '{location}' (id={job_id})")
+
         except Exception as e:
             logger.debug(f"[{self.site_name}] _read_location_from_page: {e}")
         return location
