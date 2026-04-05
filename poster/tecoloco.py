@@ -259,9 +259,8 @@ class TecolocoPoster(BasePoster):
             job_id = match.group(1)
 
             # ── Filtro de departamento ─────────────────────────────────
-            location = job.get('location', '') if isinstance(job, dict) else ''
-            if not location:
-                # Leer location de la DB si no viene en el dict
+            location = ''
+            if job_db_id:
                 try:
                     async with aiosqlite.connect(DB_PATH) as _db:
                         async with _db.execute("SELECT location FROM jobs WHERE id=?", (job_db_id,)) as _cur:
@@ -273,7 +272,6 @@ class TecolocoPoster(BasePoster):
 
             dept_result = await self._check_department(location)
             if dept_result is not None:
-                # dept_result es el status code a retornar
                 logger.info(f"[{self.site_name}] {dept_result}: {location!r}")
                 return False, dept_result
 
