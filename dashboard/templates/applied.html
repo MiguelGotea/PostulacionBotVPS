@@ -64,7 +64,7 @@
                 <th>Sitio</th>
                 <th>Estado</th>
                 <th>Detalle</th>
-                <th>Link</th>
+                <th>Acciones</th>
             </tr>
         </thead>
         <tbody>
@@ -95,7 +95,16 @@
                     </span>
                 </td>
                 <td class="error-cell">{{ job.error_message or '-' }}</td>
-                <td><a href="{{ job.url }}" target="_blank">Ver</a></td>
+                <td style="white-space:nowrap">
+                    <a href="{{ job.url }}" target="_blank">Ver</a>
+                    &nbsp;
+                    <form method="post" action="/force-apply/{{ job.id }}" style="display:inline">
+                        <button type="submit" class="btn-force-apply"
+                            title="{% if job.status == 'applied' %}Actualizar empresa y departamento{% else %}Forzar postulación{% endif %}">
+                            {% if job.status == 'applied' %}🔄{% else %}⚡{% endif %}
+                        </button>
+                    </form>
+                </td>
             </tr>
             {% else %}
             <tr><td colspan="8" class="no-results">No hay registros.</td></tr>

@@ -1,3 +1,5 @@
+import asyncio
+import random
 import aiosqlite
 import logging
 from fastapi import FastAPI, Request, Form, HTTPException, BackgroundTasks
@@ -6,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from datetime import datetime
 
-from config import DB_PATH, KEYWORDS, DASHBOARD_PORT
+from config import DB_PATH, KEYWORDS, DASHBOARD_PORT, CREDENTIALS
 from scheduler import run_single_site_scan
 
 logger = logging.getLogger(__name__)
@@ -167,13 +169,66 @@ async def ignore_job(job_id: int):
         await db.commit()
     return RedirectResponse(url="/", status_code=303)
 
-@app.post("/apply/{job_id}")
-async def force_apply(job_id: int):
-    """Fuerza la postulación de una oferta específica."""
+@app.post("/force-apply/{job_id}")
+async def force_apply_job(job_id: int, background_tasks: BackgroundTasks):
+    """
+    Fuerza postulación o actualización de datos de un job específico.
+    - status != 'applied' → corre flujo completo de postulación.
+    - status == 'applied' → solo actualiza empresa y departamento.
+    """
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("UPDATE jobs SET status = 'applying' WHERE id = ?", (job_id,))
-        await db.commit()
-    return RedirectResponse(url="/", status_code=303)
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)) as cur:
+            job = await cur.fetchone()
+    if not job:
+        return RedirectResponse(url="/applied?msg=Job+no+encontrado", status_code=303)
+
+    background_tasks.add_task(_run_force_apply, dict(job))
+    action = "Datos+actualizados" if job["status"] == "applied" else "Postulación+forzada+iniciada"
+    return RedirectResponse(url=f"/applied?msg={action}", status_code=303)
+
+
+async def _run_force_apply(job: dict):
+    """Ejecuta postulación forzada o solo actualización de datos (background)."""
+    from playwright.async_api import async_playwright
+    from poster.tecoloco import TecolocoPoster
+
+    already_applied = (job.get("status") == "applied")
+    site   = job.get("site", "")
+    job_id = job["id"]
+
+    if site != "tecoloco":
+        logger.warning(f"[force-apply] Sitio '{site}' no soportado aún.")
+        return
+
+    logger.info(f"[force-apply] id={job_id} already_applied={already_applied}")
+    poster = TecolocoPoster()
+    creds  = CREDENTIALS.get("tecoloco", {})
+
+    async with async_playwright() as p:
+        browser, context = await poster.get_browser_context(p)
+        page = await context.new_page()
+        try:
+            if poster._session_cookies:
+                await page.context.add_cookies(poster._session_cookies)
+
+            if already_applied:
+                # Solo actualizar empresa y departamento (no re-aplicar)
+                await page.goto(job["url"], wait_until="domcontentloaded", timeout=60000)
+                await asyncio.sleep(random.uniform(1.5, 2.5))
+                await poster._update_company_from_page(page, job_id)
+                await poster._read_location_from_page(page, job_id)
+                logger.info(f"[force-apply] id={job_id} datos actualizados (ya aplicado).")
+            else:
+                # Flujo completo de postulación
+                result = await poster.apply(page, job["url"], creds, job_db_id=job_id)
+                success, error_msg = result if isinstance(result, tuple) else (result, None)
+                await poster.mark_applied(job_id, success, error_msg)
+                logger.info(f"[force-apply] id={job_id} {'✅' if success else '❌'} {error_msg or ''}")
+        except Exception as e:
+            logger.error(f"[force-apply] id={job_id} excepción: {e}")
+        finally:
+            await browser.close()
 
 @app.get("/profile", response_class=HTMLResponse)
 async def profile_page(request: Request):

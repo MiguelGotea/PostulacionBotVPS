@@ -554,6 +554,21 @@ body {
     background: var(--danger);
 }
 
+.btn-force-apply {
+    background: none;
+    border: 1px solid #aaa;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: .9rem;
+    padding: 2px 6px;
+    line-height: 1.4;
+    transition: background .15s, border-color .15s;
+}
+.btn-force-apply:hover {
+    background: #f0f4ff;
+    border-color: #4a90e2;
+}
+
 /* Settings */
 .settings-grid {
     display: grid;
