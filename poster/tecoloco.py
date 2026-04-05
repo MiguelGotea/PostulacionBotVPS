@@ -81,44 +81,40 @@ class TecolocoPoster(BasePoster):
         """
         Aplica a una oferta individual. Asume sesión activa (login_once ya ejecutado).
         
+        Flujo directo:
+          1. Extrae el job_id de la URL (/NNNNN/puesto.aspx → NNNNN)
+          2. Navega directamente a /Jobs/Aplicar/{job_id} (salta el click en APLICAR)
+          3. Selección de CV + detección no_cumple
+          4. IR A PREGUNTAS → formulario → submit
+        
         Returns:
-            (True, None)       → Éxito
-            (False, 'no_cumple: motivo') → CV no cumple requisitos
-            (False, 'mensaje') → Fallo con descripción
+            (True, None)              → Éxito
+            (False, 'no_cumple: X')   → CV no cumple requisitos
+            (False, 'mensaje')        → Fallo técnico
         """
         try:
             logger.info(f"[{self.site_name}] Aplicando a: {job_url}")
 
-            # ── PASO 1: Ir a la oferta ──
-            await page.goto(job_url, wait_until="domcontentloaded", timeout=60000)
-            await asyncio.sleep(random.uniform(2, 4))
+            # ── Extraer job_id numérico de la URL ──
+            # /1066134/asistente-administrativo.aspx → 1066134
+            match = re.search(r'/(\d{4,})/', job_url)
+            if not match:
+                return False, f"No se pudo extraer ID de la URL: {job_url}"
+            job_id = match.group(1)
 
-            # Si la sesión expiró y redirigió a login
-            if "login.aspx" in page.url.lower():
-                return False, "Sesión expirada durante apply"
-
-            # ── PASO 2: Detectar y click en APLICAR ──
-            # Verificar si ya fue aplicada previamente
-            ya_aplicado = await page.query_selector(
-                "text='Ya has aplicado', .already-applied, [class*='ya-aplico']"
-            )
-            if ya_aplicado:
-                logger.info(f"[{self.site_name}] Oferta ya aplicada anteriormente.")
-                return True, None
-
-            apply_btn = await page.query_selector("a.apply-now, a.apply-now.linktowebsite, #btnAplicar")
-            if not apply_btn:
-                return False, f"Botón APLICAR no encontrado. URL: {page.url}"
-
-            await apply_btn.click()
-            await page.wait_for_load_state("domcontentloaded", timeout=30000)
+            # ── Ir directamente a la página de selección de CV ──
+            aplicar_url = f"{BASE_URL}/Jobs/Aplicar/{job_id}"
+            await page.goto(aplicar_url, wait_until="domcontentloaded", timeout=60000)
             await asyncio.sleep(random.uniform(2, 3))
 
-            # ── PASO 3: Selección de CV (/Jobs/Aplicar/{id}) ──
-            current = page.url.lower()
-            if "/jobs/aplicar/" in current or "/aplicar/" in current:
+            # Si la sesión expiró, redirige a login
+            if "login.aspx" in page.url.lower():
+                return False, "Sesión expirada al navegar a Jobs/Aplicar"
 
-                # Seleccionar primer radio de CV disponible
+            # ── PASO 1: Selección de CV (/Jobs/Aplicar/{id}) ──
+            if "/jobs/aplicar/" in page.url.lower():
+
+                # Seleccionar el primer CV (puede venir ya seleccionado)
                 cv_radio = await page.query_selector("input[name='CurriculoId']")
                 if cv_radio:
                     is_checked = await cv_radio.is_checked()
@@ -126,32 +122,27 @@ class TecolocoPoster(BasePoster):
                         await cv_radio.click()
                     await asyncio.sleep(0.5)
 
-                # Detectar mensaje "no cumple requisitos"
-                # El mensaje aparece en un div rojo/warning DESPUÉS de seleccionar CV
-                no_cumple_el = await page.query_selector(
-                    ".alert-warning, .alert-danger, div[class*='alert']:has-text('no cumple'), "
-                    "div[class*='alert']:has-text('requisitos')"
-                )
-                if not no_cumple_el:
-                    # Segunda detección por texto
-                    no_cumple_el = await page.query_selector("text='no cumple'")
-
-                if no_cumple_el:
-                    motivo_raw = (await no_cumple_el.inner_text()).strip()
-                    # Limpiar y resumir el motivo
-                    motivo = re.sub(r'\s+', ' ', motivo_raw)[:300]
-                    logger.info(f"[{self.site_name}] No cumple requisitos: {motivo[:80]}...")
-                    return False, f"no_cumple: {motivo}"
+                # Detectar "no cumple requisitos"
+                for sel in [".alert-warning", ".alert-danger", ".alert"]:
+                    alert_el = await page.query_selector(sel)
+                    if alert_el:
+                        texto = (await alert_el.inner_text()).strip().lower()
+                        if "no cumple" in texto or "requisito" in texto:
+                            motivo = re.sub(r'\s+', ' ', texto)[:300]
+                            logger.info(f"[{self.site_name}] no_cumple detectado: {motivo[:80]}")
+                            return False, f"no_cumple: {motivo}"
 
                 # Click en "IR A PREGUNTAS"
                 go_btn = await page.query_selector(
-                    "button#goToQuestions, button:has-text('IR A PREGUNTAS'), "
+                    "button#goToQuestions, "
+                    "button:has-text('IR A PREGUNTAS'), "
                     "a:has-text('IR A PREGUNTAS')"
                 )
+                # Fallback: puede existir botón APLICAR directo (sin preguntas)
                 if not go_btn:
-                    # Puede que sea aplicación directa sin preguntas
                     go_btn = await page.query_selector(
-                        "button#applyButton, button.btn-aplicar, button:has-text('APLICAR')"
+                        "button:has-text('APLICAR'), button#applyButton, "
+                        "input[type='submit']"
                     )
 
                 if not go_btn:
@@ -161,70 +152,59 @@ class TecolocoPoster(BasePoster):
                 await page.wait_for_load_state("domcontentloaded", timeout=30000)
                 await asyncio.sleep(random.uniform(2, 3))
 
-            # ── PASO 4: Formulario de preguntas (/application/ApplyQuestions) ──
-            if "applyquestions" in page.url.lower() or "ApplyQuestions" in page.url:
+            # ── PASO 2: Formulario de preguntas (/application/ApplyQuestions) ──
+            if "applyquestions" in page.url.lower():
 
                 profile = await self.get_candidate_profile()
-
-                # Recopilar pares label → textarea
-                labels = await page.query_selector_all("form label, .form-group label")
-                textareas = await page.query_selector_all("textarea.validar, textarea.required-value")
+                labels   = await page.query_selector_all("form label, label")
+                textareas = await page.query_selector_all("textarea")
 
                 questions = []
                 for i, textarea in enumerate(textareas):
-                    ta_id = await textarea.get_attribute("id") or f"q_{i}"
-                    question_text = ""
+                    ta_id   = await textarea.get_attribute("id") or f"q_{i}"
+                    q_text  = ""
                     if i < len(labels):
-                        question_text = (await labels[i].inner_text()).strip()
-                    questions.append({"id": ta_id, "text": question_text})
+                        q_text = (await labels[i].inner_text()).strip()
+                    questions.append({"id": ta_id, "text": q_text})
 
-                logger.info(f"[{self.site_name}] {len(questions)} preguntas detectadas → consultando Gemini AI")
+                logger.info(f"[{self.site_name}] {len(questions)} preguntas → Gemini AI")
 
                 if questions:
                     answers = await answer_questions(questions, profile)
                     for q in questions:
-                        answer = answers.get(q["id"], "")
-                        if answer and q["id"]:
+                        ans = answers.get(q["id"], "")
+                        if ans and q["id"]:
                             el = await page.query_selector(f"#{q['id']}")
                             if el:
-                                await el.fill(answer)
+                                await el.fill(ans)
                                 await asyncio.sleep(random.uniform(0.4, 1.0))
 
-                # Submit final
+                # Submit — el botón en la pantalla real dice "APLICAR"
                 submit_btn = await page.query_selector(
-                    "button#applyButton, button.btn-aplicar.enviarForm, "
-                    "button.apply-now, input[type='submit']"
+                    "button:has-text('APLICAR'), "
+                    "button#applyButton, "
+                    "button.btn-aplicar, "
+                    "input[type='submit']"
                 )
                 if not submit_btn:
-                    return False, f"Botón de envío final no encontrado. URL: {page.url}"
+                    return False, f"Botón APLICAR final no encontrado. URL: {page.url}"
 
                 await submit_btn.click()
                 await page.wait_for_load_state("domcontentloaded", timeout=30000)
                 await asyncio.sleep(3)
 
-            # ── PASO 5: Verificar resultado ──
+            # ── PASO 3: Verificar resultado ──
             final_url = page.url.lower()
-
-            # Indicadores de error
-            if "error" in final_url or "login.aspx" in final_url:
+            if "login.aspx" in final_url or "error" in final_url:
                 return False, f"Error tras submit. URL final: {page.url}"
 
-            # Indicadores de éxito: mensaje de confirmación o regreso a la oferta
-            success_msg = await page.query_selector(
-                "text='Postulación enviada', text='Has aplicado', "
-                "text='¡Gracias', .alert-success, [class*='success']"
-            )
-            if success_msg:
-                logger.info(f"[{self.site_name}] ✅ Postulación confirmada por mensaje en página")
-                return True, None
-
-            # Si llegamos aquí sin errores detectados, asumimos éxito
             logger.info(f"[{self.site_name}] ✅ Postulación enviada. URL final: {page.url}")
             return True, None
 
         except Exception as e:
             logger.error(f"[{self.site_name}] Excepción en apply(): {e}")
             return False, f"Excepción: {str(e)}"
+
 
     # ─────────────────────────────────────────────
     # COMPATIBILIDAD CON BASE CLASS
