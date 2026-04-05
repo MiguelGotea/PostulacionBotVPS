@@ -173,6 +173,46 @@ async def init_db():
             )
         """)
 
+        # ── Departamentos de Nicaragua ──────────────────────────────────
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS nicaragua_departments (
+                id   INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL
+            )
+        """)
+        nicaragua_depts = [
+            "Boaco", "Carazo", "Chinandega", "Chontales", "Estelí",
+            "Granada", "Jinotega", "León", "Madriz", "Managua",
+            "Masaya", "Matagalpa", "Nueva Segovia", "Río San Juan",
+            "Rivas", "RAAN", "RAAS"
+        ]
+        for dept in nicaragua_depts:
+            await db.execute(
+                "INSERT OR IGNORE INTO nicaragua_departments (name) VALUES (?)", (dept,)
+            )
+
+        # ── Departamentos habilitados por perfil ───────────────────────
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS profile_departments (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                profile_id    INTEGER NOT NULL,
+                department    TEXT NOT NULL,
+                is_enabled    INTEGER DEFAULT 1,
+                UNIQUE(profile_id, department),
+                FOREIGN KEY (profile_id) REFERENCES candidate_profiles(id)
+            )
+        """)
+        # Semilla: Katty sólo postula en Managua por defecto
+        for dept in nicaragua_depts:
+            enabled = 1 if dept == "Managua" else 0
+            await db.execute("""
+                INSERT INTO profile_departments (profile_id, department, is_enabled)
+                SELECT 1, ?, ?
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM profile_departments WHERE profile_id = 1 AND department = ?
+                )
+            """, (dept, enabled, dept))
+
         await db.commit()
     return True
 

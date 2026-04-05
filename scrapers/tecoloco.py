@@ -195,9 +195,35 @@ class TecolocoScraper(BaseScraper):
                             company = raw
                         break
 
+            # ── Ubicación ──────────────────────────────────────────────
+            location = ""
+            for sel in [
+                "li:has(i.icon-map-marker)",
+                "li:has(.fa-map-marker)",
+                "li:has([class*='map'])",
+                ".job-location", "span.location",
+            ]:
+                el = await card.query_selector(sel)
+                if el:
+                    raw_loc = (await el.inner_text()).strip()
+                    raw_loc = re.sub(r'^[\s\W]+', '', raw_loc).strip()
+                    if raw_loc:
+                        location = raw_loc
+                        break
+
+            # Fallback: buscar en todos los li el texto "Nicaragua"
+            if not location:
+                lis = await card.query_selector_all("ul li")
+                for li in lis:
+                    text = (await li.inner_text()).strip()
+                    if "nicaragua" in text.lower():
+                        location = re.sub(r'^[\s\W]+', '', text).strip()
+                        break
+
             return {
                 'title':           title[:100],
                 'company':         company[:100],
+                'location':        location[:120],
                 'url':             url,
                 'site':            self.site_name,
                 'requires_manual': False

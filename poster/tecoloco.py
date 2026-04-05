@@ -87,6 +87,51 @@ class TecolocoPoster(BasePoster):
             logger.error(f"[{self.site_name}] Error leyendo cookies de DB: {e}")
             return None
 
+    async def _check_department(self, location: str) -> str | None:
+        """
+        Verifica si la ubicación de la oferta está en los departamentos
+        permitidos para el perfil activo.
+
+        Returns:
+            None                           → OK, puede aplicar
+            'sin_departamento: ...'        → Solo dice Nicaragua, no especifica
+            'departamento_no_permitido: X' → Departamento fuera del filtro
+        """
+        if not location:
+            return None  # Sin location → no se filtra (dejar pasar)
+
+        loc_lower = location.lower().strip()
+
+        # Si solo dice "Nicaragua" sin especificar ciudad/departamento
+        if loc_lower in ("nicaragua", "nicaragua."):
+            return "sin_departamento: La oferta no especifica departamento"
+
+        # Extraer el departamento: "Managua, Nicaragua" → "Managua"
+        # También manejar "Managua" sin coma
+        dept_raw = location.split(",")[0].strip()
+
+        # Leer departamentos habilitados del perfil activo
+        try:
+            async with aiosqlite.connect(DB_PATH) as db:
+                async with db.execute(
+                    """SELECT pd.department FROM profile_departments pd
+                       JOIN candidate_profiles cp ON cp.id = pd.profile_id
+                       WHERE cp.is_active = 1 AND pd.is_enabled = 1""",
+                ) as cursor:
+                    rows = await cursor.fetchall()
+                    allowed = {r[0].lower() for r in rows}
+        except Exception as e:
+            logger.debug(f"[{self.site_name}] _check_department error: {e}")
+            return None  # Si falla la DB, dejar pasar
+
+        if not allowed:
+            return None  # Sin configuración → no filtrar
+
+        if dept_raw.lower() in allowed:
+            return None  # ✅ Departamento permitido
+
+        return f"departamento_no_permitido: {dept_raw}"
+
     async def _update_company_from_page(self, page, job_id) -> None:
         """
         Lee el nombre real de la empresa desde la página del job
@@ -212,6 +257,25 @@ class TecolocoPoster(BasePoster):
             if not match:
                 return False, f"No se pudo extraer ID de: {job_url}"
             job_id = match.group(1)
+
+            # ── Filtro de departamento ─────────────────────────────────
+            location = job.get('location', '') if isinstance(job, dict) else ''
+            if not location:
+                # Leer location de la DB si no viene en el dict
+                try:
+                    async with aiosqlite.connect(DB_PATH) as _db:
+                        async with _db.execute("SELECT location FROM jobs WHERE id=?", (job_db_id,)) as _cur:
+                            _row = await _cur.fetchone()
+                            if _row:
+                                location = _row[0] or ''
+                except Exception:
+                    pass
+
+            dept_result = await self._check_department(location)
+            if dept_result is not None:
+                # dept_result es el status code a retornar
+                logger.info(f"[{self.site_name}] {dept_result}: {location!r}")
+                return False, dept_result
 
             # ── Cargar cookies (DB primario → HTTP fallback) ────────
             if not self._session_cookies:

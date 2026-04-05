@@ -150,6 +150,27 @@
         </form>
     </div>
 
+    <!-- ── Departamentos permitidos ── -->
+    <div class="keywords-section" style="margin-top:1.5rem">
+        <h3>📍 Departamentos Permitidos</h3>
+        <p class="keywords-desc">
+            El bot solo aplicará a ofertas en los departamentos seleccionados.
+            Si la oferta dice solo "Nicaragua" (sin departamento) se descartará automáticamente.
+            Usa <strong>Reintentar Rechazados</strong> para volver a intentar las ofertas filtradas.
+        </p>
+
+        <div class="keywords-grid">
+            {% for dept in profile_departments.get(profile.id, []) %}
+            <form method="post" action="/profile/departments/{{ profile.id }}/{{ dept.department }}/toggle" style="display:inline">
+                <button type="submit" class="keyword-pill {% if dept.is_enabled %}kw-on{% else %}kw-off{% endif %}">
+                    {% if dept.is_enabled %}📍{% else %}🚫{% endif %}
+                    {{ dept.department }}
+                </button>
+            </form>
+            {% endfor %}
+        </div>
+    </div>
+
 </div>
 {% else %}
 <div class="empty-state">

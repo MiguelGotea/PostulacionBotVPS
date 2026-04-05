@@ -45,6 +45,10 @@ class BasePoster(abc.ABC):
             status = 'applied'
         elif error and str(error).startswith('no_cumple:'):
             status = 'no_cumple'
+        elif error and str(error).startswith('sin_departamento:'):
+            status = 'sin_departamento'
+        elif error and str(error).startswith('departamento_no_permitido:'):
+            status = 'departamento_no_permitido'
         else:
             status = 'failed'
 

@@ -155,24 +155,34 @@ async def cleanup_invalid_jobs():
     return RedirectResponse(url=f"/settings?msg=Limpieza+completada:+{deleted}+ofertas+invalidas+eliminadas", status_code=303)
 
 
-@app.post("/retry-failed")
-async def retry_failed_jobs(site: str = Form(None)):
-    """Resetea los jobs fallidos Y no_cumple a 'new' para que sean reintentados."""
+# Todos los statuses de rechazo que se pueden reintentar
+REINTENTABLES = ('failed', 'no_cumple', 'sin_departamento', 'departamento_no_permitido')
+
+@app.post("/reintentar-rechazados")
+async def reintentar_rechazados(site: str = Form(None)):
+    """Resetea TODOS los jobs rechazados a 'new' para reintento (cambió perfil, CV o departamentos)."""
+    placeholders = ",".join(f"'{s}'" for s in REINTENTABLES) if False else ",".join("?" * len(REINTENTABLES))
     async with aiosqlite.connect(DB_PATH) as db:
         if site:
             await db.execute(
-                "UPDATE jobs SET status = 'new', error_message = NULL, date_applied = NULL WHERE status IN ('failed', 'no_cumple') AND site = ?",
-                (site,)
+                f"UPDATE jobs SET status='new', error_message=NULL, date_applied=NULL WHERE status IN ({placeholders}) AND site=?",
+                (*REINTENTABLES, site)
             )
         else:
             await db.execute(
-                "UPDATE jobs SET status = 'new', error_message = NULL, date_applied = NULL WHERE status IN ('failed', 'no_cumple')"
+                f"UPDATE jobs SET status='new', error_message=NULL, date_applied=NULL WHERE status IN ({placeholders})",
+                REINTENTABLES
             )
         count = db.total_changes
         await db.commit()
-    logger.info(f"Retry: {count} jobs (failed + no_cumple) reseteados a 'new' (site={site or 'todos'})")
-    msg = f"{count}+jobs+reseteados+para+reintento"
+    logger.info(f"Reintentar rechazados: {count} jobs reseteados (site={site or 'todos'})")
+    msg = f"{count}+jobs+en+cola+para+reintento"
     return RedirectResponse(url=f"/applied?msg={msg}", status_code=303)
+
+# Mantener la ruta antigua como alias para compatibilidad con formularios del template
+@app.post("/retry-failed")
+async def retry_failed_compat(site: str = Form(None)):
+    return await reintentar_rechazados(site)
 
 @app.post("/ignore/{job_id}")
 async def ignore_job(job_id: int):
@@ -205,11 +215,20 @@ async def profile_page(request: Request):
             for kw in await cursor.fetchall():
                 pid = kw["profile_id"]
                 profile_keywords.setdefault(pid, []).append(dict(kw))
+    # Cargar departamentos por perfil
+    profile_departments = {}
+    async with aiosqlite.connect(DB_PATH) as db2:
+        db2.row_factory = aiosqlite.Row
+        async with db2.execute("SELECT * FROM profile_departments ORDER BY profile_id, department") as cursor:
+            for row in await cursor.fetchall():
+                pid = row["profile_id"]
+                profile_departments.setdefault(pid, []).append(dict(row))
 
     return templates.TemplateResponse("profile.html", {
         "request": request,
         "profiles": profiles,
-        "profile_keywords": profile_keywords
+        "profile_keywords": profile_keywords,
+        "profile_departments": profile_departments,
     })
 
 @app.post("/profile/keywords/{keyword_id}/toggle")
@@ -219,6 +238,19 @@ async def toggle_keyword(keyword_id: int):
         await db.execute(
             "UPDATE profile_keywords SET is_enabled = CASE WHEN is_enabled=1 THEN 0 ELSE 1 END WHERE id=?",
             (keyword_id,)
+        )
+        await db.commit()
+    return RedirectResponse(url="/profile", status_code=303)
+
+@app.post("/profile/departments/{profile_id}/{department}/toggle")
+async def toggle_department(profile_id: int, department: str):
+    """Activa/desactiva un departamento de búsqueda."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute(
+            """INSERT INTO profile_departments (profile_id, department, is_enabled) VALUES (?,?,1)
+               ON CONFLICT(profile_id, department) DO UPDATE SET
+               is_enabled = CASE WHEN is_enabled=1 THEN 0 ELSE 1 END""",
+            (profile_id, department)
         )
         await db.commit()
     return RedirectResponse(url="/profile", status_code=303)
