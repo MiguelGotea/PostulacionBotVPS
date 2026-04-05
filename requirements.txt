@@ -7,4 +7,4 @@ jinja2==3.1.3
 aiosqlite==0.20.0
 python-multipart==0.0.9
 setuptools
-google-generativeai>=0.8.0
+aiohttp>=3.9.0
