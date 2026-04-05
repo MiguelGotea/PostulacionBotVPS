@@ -23,6 +23,11 @@ import aiosqlite
 
 logger = logging.getLogger(__name__)
 
+# Lock global: impide que dos instancias de Playwright corran al mismo tiempo.
+# En un VPS de 1 vCPU, tener dos browsers simultáneos causa timeouts.
+_cycle_lock = asyncio.Lock()
+_is_running  = False
+
 def get_all_scrapers():
     """Retorna una lista con todos los scrapers disponibles."""
     return [
@@ -36,31 +41,52 @@ def get_all_scrapers():
 
 async def run_single_site_scan(site_name: str):
     """Ejecuta el escaneo para un único sitio específico."""
-    now_managua = datetime.now() - timedelta(hours=6)
-    logger.info(f"--- Escaneo manual iniciado: {site_name} ({now_managua}) ---")
-    
-    scrapers = get_all_scrapers()
-    target_scraper = next((s for s in scrapers if s.site_name == site_name), None)
-    
-    if not target_scraper:
-        logger.error(f"Scraper no encontrado para el sitio: {site_name}")
-        return
-        
-    async with async_playwright() as p:
-        try:
-            jobs = await target_scraper.scrape(p)
-            new_count = await target_scraper.save_jobs(jobs)
-            await target_scraper.log_scan(len(jobs))
-            logger.info(f"[{site_name}] Escaneo manual finalizado. {new_count} nuevas ofertas.")
-        except Exception as e:
-            logger.error(f"Error en escaneo manual de {site_name}: {e}")
-            await target_scraper.log_scan(0, str(e))
+    global _is_running
+
+    if _cycle_lock.locked():
+        logger.warning(f"[{site_name}] Escaneo manual solicitado pero hay un ciclo en curso. Esperando...")
+
+    async with _cycle_lock:          # Espera si el ciclo auto está corriendo
+        now_managua = datetime.now() - timedelta(hours=6)
+        logger.info(f"--- Escaneo manual iniciado: {site_name} ({now_managua}) ---")
+
+        scrapers = get_all_scrapers()
+        target_scraper = next((s for s in scrapers if s.site_name == site_name), None)
+
+        if not target_scraper:
+            logger.error(f"Scraper no encontrado para el sitio: {site_name}")
+            return
+
+        async with async_playwright() as p:
+            try:
+                jobs = await target_scraper.scrape(p)
+                new_count = await target_scraper.save_jobs(jobs)
+                await target_scraper.log_scan(len(jobs))
+                logger.info(f"[{site_name}] Escaneo manual finalizado. {new_count} nuevas ofertas.")
+            except Exception as e:
+                logger.error(f"Error en escaneo manual de {site_name}: {e}")
+                await target_scraper.log_scan(0, str(e))
 
 async def run_scan_cycle():
     """Ejecuta un ciclo completo de escaneo y postulación."""
+    global _is_running
+
+    if _cycle_lock.locked():
+        logger.warning("Ciclo anterior aún en curso, saltando este ciclo.")
+        return
+
+    async with _cycle_lock:
+        _is_running = True
+        try:
+            await _do_scan_cycle()
+        finally:
+            _is_running = False
+
+async def _do_scan_cycle():
+    """Lógica interna del ciclo (protegida por _cycle_lock)."""
     now_managua = datetime.now() - timedelta(hours=6)
     logger.info(f"--- Iniciando ciclo de escaneo automático: {now_managua} ---")
-    
+
     scrapers = get_all_scrapers()
     
     # 1. Consultar sitios habilitados
