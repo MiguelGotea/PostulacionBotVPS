@@ -87,6 +87,63 @@ class TecolocoPoster(BasePoster):
             logger.error(f"[{self.site_name}] Error leyendo cookies de DB: {e}")
             return None
 
+    async def _update_company_from_page(self, page, job_id) -> None:
+        """
+        Lee el nombre real de la empresa desde la página del job
+        y actualiza la DB si estaba guardado como 'Confidencial'.
+        """
+        if not job_id:
+            return
+        try:
+            company = None
+            # Selectores en la página de detalle de Tecoloco
+            for sel in [
+                ".employer-name a",
+                ".company-name",
+                "a[href*='empresa']",
+                ".job-detail-company",
+                "h2.employer a",
+                # Sidebar izquierdo — nombre de empresa grande
+                ".sidebar .employer",
+                "aside h3",
+                # Link junto al título del puesto
+                "h1 + p a, h1 + div a",
+            ]:
+                el = await page.query_selector(sel)
+                if el:
+                    text = (await el.inner_text()).strip()
+                    if text and text.lower() not in ("confidencial", ""):
+                        company = text[:100]
+                        break
+
+            # Si aún no encontramos, buscar el patrón en el HTML del site
+            if not company:
+                try:
+                    # Tecoloco pone el nombre en un <a> con clase o cerca del logo
+                    els = await page.query_selector_all("section a, .job-info a, article a")
+                    for el in els:
+                        href = await el.get_attribute("href") or ""
+                        text = (await el.inner_text()).strip()
+                        if (text and len(text) > 3
+                                and text.lower() not in ("confidencial", "ver oferta", "aplicar")
+                                and not href.startswith("/empleos") and not href.startswith("/login")):
+                            company = text[:100]
+                            break
+                except Exception:
+                    pass
+
+            if company:
+                async with aiosqlite.connect(DB_PATH) as db:
+                    await db.execute(
+                        "UPDATE jobs SET company = ? WHERE id = ? AND (company = 'Confidencial' OR company IS NULL)",
+                        (company, job_id)
+                    )
+                    if db.total_changes:
+                        logger.info(f"[{self.site_name}] Empresa actualizada: '{company}' (id={job_id})")
+                    await db.commit()
+        except Exception as e:
+            logger.debug(f"[{self.site_name}] _update_company_from_page: {e}")
+
     async def _login_via_http(self, credentials: dict) -> list[dict] | None:
         """Fallback: login vía HTTP POST (sin browser headless)."""
         import aiohttp as aio
@@ -129,7 +186,7 @@ class TecolocoPoster(BasePoster):
     # POSTULACIÓN PRINCIPAL
     # ─────────────────────────────────────────────
 
-    async def apply(self, page, job_url, credentials=None):
+    async def apply(self, page, job_url, credentials=None, job_db_id=None):
         """
         Aplica a una oferta.
 
@@ -173,9 +230,12 @@ class TecolocoPoster(BasePoster):
             except Exception as e:
                 logger.warning(f"[{self.site_name}] Error inyectando cookies: {e}")
 
-            # ── PASO 0: Ir a la página del job → click APLICAR ─────
+            # ── PASO 0: Ir a la página del job → leer empresa real → click APLICAR ─
             await page.goto(job_url, wait_until="domcontentloaded", timeout=60000)
             await asyncio.sleep(random.uniform(2, 3))
+
+            # Leer nombre real de empresa (puede estar oculto en el card de búsqueda)
+            await self._update_company_from_page(page, job_db_id)
 
             apply_btn = await page.query_selector(
                 "a.apply-now, "

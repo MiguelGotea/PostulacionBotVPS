@@ -156,7 +156,7 @@ async def _do_scan_cycle():
                     for job in jobs_by_site['tecoloco']:
                         try:
                             # apply() hace login inline si la sesión no está activa
-                            result = await tecoloco_poster.apply(page, job['url'], tecoloco_creds)
+                            result = await tecoloco_poster.apply(page, job['url'], tecoloco_creds, job_db_id=job['id'])
                             success, error_msg = result if isinstance(result, tuple) else (result, None)
                             await tecoloco_poster.mark_applied(job['id'], success, error_msg)
                             if success:

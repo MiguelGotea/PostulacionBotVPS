@@ -162,25 +162,44 @@ class TecolocoScraper(BaseScraper):
             url = href if href.startswith("http") else BASE_URL + href
 
             # Filtro: solo URLs con ID numérico de 4+ dígitos
-            # /1062177/supervisor-de-ventas.aspx ✅  |  /empleo-categoria?... ❌
             if not re.search(r'/\d{4,}/', url):
                 return None
 
-            # Empresa (li con icono icon-building)
+            # ── Empresa: probar múltiples selectores del card ──
             company = "Confidencial"
-            lis = await card.query_selector_all("ul li")
-            for li in lis:
-                icon = await li.query_selector("i.icon-building")
-                if icon:
-                    raw = (await li.inner_text()).strip()
-                    company = raw.strip() or "Confidencial"
-                    break
+
+            # 1. Selector específico de Tecoloco para nombre de empresa
+            for sel in [
+                ".company-name", ".employer-name",
+                "a[href*='/empresa/']", "a[href*='/company/']",
+                "span.company", ".job-company",
+            ]:
+                el = await card.query_selector(sel)
+                if el:
+                    text = (await el.inner_text()).strip()
+                    if text and text.lower() not in ("confidencial", ""):
+                        company = text
+                        break
+
+            # 2. Li con icono icon-building (fallback original)
+            if company == "Confidencial":
+                lis = await card.query_selector_all("ul li")
+                for li in lis:
+                    icon = await li.query_selector("i.icon-building, .fa-building, [class*='building']")
+                    if icon:
+                        # Obtener solo el texto del li excluyendo el icono
+                        raw = (await li.inner_text()).strip()
+                        # Quitar posibles caracteres de icono al inicio
+                        raw = re.sub(r'^[\s\W]+', '', raw).strip()
+                        if raw and raw.lower() != "confidencial":
+                            company = raw
+                        break
 
             return {
-                'title':          title[:100],
-                'company':        company[:100],
-                'url':            url,
-                'site':           self.site_name,
+                'title':           title[:100],
+                'company':         company[:100],
+                'url':             url,
+                'site':            self.site_name,
                 'requires_manual': False
             }
 
