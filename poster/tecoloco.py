@@ -189,6 +189,52 @@ class TecolocoPoster(BasePoster):
         except Exception as e:
             logger.debug(f"[{self.site_name}] _update_company_from_page: {e}")
 
+    async def _read_location_from_page(self, page, job_id) -> str:
+        """
+        Lee la ubicación real desde la página de detalle del job y actualiza la DB.
+        Retorna la ubicación encontrada ('' si no hay).
+        """
+        location = ''
+        try:
+            # Tecoloco muestra la ubicación con un icono de pin: "Masaya, Nicaragua"
+            for sel in [
+                ".job-location",
+                "li:has(i.icon-map-marker)",
+                "li:has(.fa-map-marker-alt)",
+                "span:has-text('Nicaragua')",
+                "[class*='location']",
+                ".job-detail-location",
+            ]:
+                el = await page.query_selector(sel)
+                if el:
+                    raw = (await el.inner_text()).strip()
+                    raw = re.sub(r'^[\s\W]+', '', raw).strip()
+                    if raw and 'nicaragua' in raw.lower():
+                        location = raw[:120]
+                        break
+
+            # Fallback: buscar patrón "X, Nicaragua" en toda la página
+            if not location:
+                try:
+                    body = await page.inner_text("body")
+                    m = re.search(r'([A-ZÁÉÍÓÚÑ][a-záéíóúñ ]+),\s*Nicaragua', body)
+                    if m:
+                        location = m.group(0)[:120]
+                except Exception:
+                    pass
+
+            if location and job_id:
+                async with aiosqlite.connect(DB_PATH) as db:
+                    await db.execute(
+                        "UPDATE jobs SET location = ? WHERE id = ? AND (location IS NULL OR location = '')",
+                        (location, job_id)
+                    )
+                    await db.commit()
+                    logger.info(f"[{self.site_name}] Ubicación actualizada: '{location}' (id={job_id})")
+        except Exception as e:
+            logger.debug(f"[{self.site_name}] _read_location_from_page: {e}")
+        return location
+
     async def _login_via_http(self, credentials: dict) -> list[dict] | None:
         """Fallback: login vía HTTP POST (sin browser headless)."""
         import aiohttp as aio
@@ -354,9 +400,9 @@ class TecolocoPoster(BasePoster):
                     "input[type='submit']"
                 )
 
-                if not go_btn:
-                    # Solo ahora es un no_cumple real → extraer razón del alert
-                    motivo = "Sin botón APLICAR en la página"
+                if not go_btn or not await go_btn.is_visible():
+                    # Bотón inexistente O oculto (DOM pero invisible) → no_cumple real
+                    motivo = "Sin botón APLICAR visible en la página"
                     for sel in [".alert-danger", ".alert-warning", ".alert"]:
                         alert_el = await page.query_selector(sel)
                         if alert_el:
