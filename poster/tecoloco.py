@@ -14,6 +14,7 @@ import logging
 import random
 import re
 import aiohttp
+import aiosqlite
 
 from poster.base import BasePoster
 from poster.ai_responder import answer_questions
