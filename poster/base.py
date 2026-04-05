@@ -3,7 +3,7 @@ import asyncio
 import random
 import logging
 import aiosqlite
-from config import DB_PATH, MIN_DELAY, MAX_DELAY, USER_AGENTS
+from config import DB_PATH, USER_AGENTS, MIN_DELAY, MAX_DELAY
 
 logger = logging.getLogger(__name__)
 
@@ -18,8 +18,11 @@ class BasePoster(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def apply(self, page, job_url) -> bool:
-        """Realiza la postulación a una oferta específica. Debe ser implementado."""
+    async def apply(self, page, job_url, credentials=None):
+        """
+        Realiza la postulación a una oferta específica.
+        Debe retornar (success: bool, error_msg: str | None).
+        """
         pass
 
     async def already_applied(self, url: str) -> bool:
@@ -30,8 +33,21 @@ class BasePoster(abc.ABC):
                 return row and row[0] == 'applied'
 
     async def mark_applied(self, job_id, success: bool, error: str = None):
-        """Actualiza la DB con el resultado de la postulación."""
-        status = 'applied' if success else 'failed'
+        """
+        Actualiza la DB con el resultado de la postulación.
+        
+        Lógica de status:
+          - success=True  → 'applied'
+          - error empieza con 'no_cumple:'  → 'no_cumple'
+          - cualquier otro error  → 'failed'
+        """
+        if success:
+            status = 'applied'
+        elif error and str(error).startswith('no_cumple:'):
+            status = 'no_cumple'
+        else:
+            status = 'failed'
+
         async with aiosqlite.connect(self.db_path) as db:
             await db.execute("""
                 UPDATE jobs 
@@ -54,3 +70,18 @@ class BasePoster(abc.ABC):
             viewport={'width': random.randint(1280, 1920), 'height': random.randint(720, 1080)}
         )
         return browser, context
+
+    async def get_candidate_profile(self) -> dict:
+        """Obtiene el perfil activo del candidato desde la DB."""
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                db.row_factory = aiosqlite.Row
+                async with db.execute(
+                    "SELECT * FROM candidate_profiles WHERE is_active = 1 ORDER BY id LIMIT 1"
+                ) as cursor:
+                    row = await cursor.fetchone()
+                    if row:
+                        return dict(row)
+        except Exception as e:
+            logger.error(f"Error obteniendo candidate_profile: {e}")
+        return {}

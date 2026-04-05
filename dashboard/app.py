@@ -55,8 +55,8 @@ async def applied(request: Request):
         db.row_factory = aiosqlite.Row
         async with db.execute("""
             SELECT * FROM jobs 
-            WHERE status IN ('applied', 'failed') 
-            ORDER BY date_applied DESC LIMIT 50
+            WHERE status IN ('applied', 'failed', 'no_cumple') 
+            ORDER BY date_applied DESC LIMIT 100
         """) as cursor:
             jobs = await cursor.fetchall()
 
@@ -190,6 +190,52 @@ async def force_apply(job_id: int):
         await db.commit()
     return RedirectResponse(url="/", status_code=303)
 
+@app.get("/profile", response_class=HTMLResponse)
+async def profile_page(request: Request):
+    """Página de gestión de perfiles de candidatos."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("SELECT * FROM candidate_profiles ORDER BY id") as cursor:
+            profiles = await cursor.fetchall()
+    return templates.TemplateResponse("profile.html", {
+        "request": request,
+        "profiles": profiles
+    })
+
+@app.post("/profile/update/{profile_id}")
+async def update_profile(
+    profile_id: int,
+    name: str = Form(...),
+    phone: str = Form(""),
+    location: str = Form(""),
+    birth_date: str = Form(""),
+    civil_status: str = Form(""),
+    address: str = Form(""),
+    education: str = Form(""),
+    experience: str = Form(""),
+    skills: str = Form(""),
+    languages: str = Form(""),
+    salary_expectation: str = Form(""),
+    availability: str = Form(""),
+    about: str = Form(""),
+    applied_sites: str = Form("all"),
+    is_active: int = Form(1),
+):
+    """Actualiza un perfil de candidato."""
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("""
+            UPDATE candidate_profiles SET
+                name=?, phone=?, location=?, birth_date=?, civil_status=?, address=?,
+                education=?, experience=?, skills=?, languages=?,
+                salary_expectation=?, availability=?, about=?, applied_sites=?, is_active=?
+            WHERE id=?
+        """, (name, phone, location, birth_date, civil_status, address,
+              education, experience, skills, languages,
+              salary_expectation, availability, about, applied_sites, is_active,
+              profile_id))
+        await db.commit()
+    return RedirectResponse(url="/profile?msg=Perfil+actualizado", status_code=303)
+
 @app.get("/api/stats")
 async def get_stats():
     """Retorna estadísticas en JSON."""
@@ -200,7 +246,7 @@ async def get_stats():
         async with db.execute("SELECT COUNT(*) FROM jobs WHERE status = 'new'") as cursor:
             row = await cursor.fetchone()
             total_new = row[0] if row else 0
-            
+
     return {
         "total_applied": total_applied,
         "total_new": total_new,

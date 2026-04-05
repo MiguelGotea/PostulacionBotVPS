@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 from datetime import datetime, timedelta
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from playwright.async_api import async_playwright
@@ -107,46 +108,74 @@ async def run_scan_cycle():
             rows = await cursor.fetchall()
             manual_jobs = [dict(row) for row in rows]
 
-    # 3. Procesar postulaciones
+    # 3. Procesar postulaciones agrupadas por site
     applied_successfully = []
     if to_apply:
         logger.info(f"Procesando {len(to_apply)} postulaciones automáticas...")
-        
-        posters = {
-            'tecoloco': TecolocoPoster(),
+
+        # Agrupar jobs por site
+        from collections import defaultdict
+        jobs_by_site = defaultdict(list)
+        for job in to_apply:
+            jobs_by_site[job['site']].append(job)
+
+        # ── Tecoloco: sesión única de login para todo el ciclo ──
+        if 'tecoloco' in jobs_by_site:
+            tecoloco_poster = TecolocoPoster()
+            async with async_playwright() as p:
+                browser, context = await tecoloco_poster.get_browser_context(p)
+                page = await context.new_page()
+                try:
+                    logged_in = await tecoloco_poster.login_once(page, CREDENTIALS.get('tecoloco'))
+                    if not logged_in:
+                        logger.error("[tecoloco] Login falló — saltando todas las postulaciones de tecoloco")
+                        for job in jobs_by_site['tecoloco']:
+                            await tecoloco_poster.mark_applied(job['id'], False, "Login fallido al inicio del ciclo")
+                    else:
+                        for job in jobs_by_site['tecoloco']:
+                            try:
+                                result = await tecoloco_poster.apply(page, job['url'])
+                                success, error_msg = result if isinstance(result, tuple) else (result, None)
+                                await tecoloco_poster.mark_applied(job['id'], success, error_msg)
+                                if success:
+                                    applied_successfully.append(dict(job))
+                                await asyncio.sleep(random.uniform(3, 6))  # pausa entre postulaciones
+                            except Exception as e:
+                                logger.error(f"Error en tecoloco job id={job['id']}: {e}")
+                                await tecoloco_poster.mark_applied(job['id'], False, str(e))
+                finally:
+                    await browser.close()
+
+        # ── Otros portales: un browser por job (flujo previo) ──
+        other_posters = {
             'computrabajo': ComputrabajoPoster(),
             'opcionempleo': OpcionempleoPoster(),
             'acciontrabajo': AcciontrabajoPoster()
         }
-        
-        async with async_playwright() as p:
-            for job in to_apply:
-                site = job['site']
-                poster = posters.get(site)
-                
-                if not poster or not CREDENTIALS.get(site, {}).get('email'):
-                    logger.warning(f"No hay poster o credenciales para {site}. Saltando.")
-                    continue
-                    
-                browser, context = await poster.get_browser_context(p)
-                page = await context.new_page()
-                
-                try:
-                    # Flujo Orgánico: apply se encarga del login si es necesario
-                    # Retorna (success: bool, error_msg: str | None)
-                    result = await poster.apply(page, job['url'], CREDENTIALS.get(site))
-                    if isinstance(result, tuple):
-                        success, error_msg = result
-                    else:
-                        success, error_msg = result, None  # retrocompatibilidad
-                    await poster.mark_applied(job['id'], success, error_msg)
-                    if success:
-                        applied_successfully.append(dict(job))
-                except Exception as e:
-                    logger.error(f"Error procesando postulación para id={job['id']}: {e}")
-                    await poster.mark_applied(job['id'], False, str(e))
-                finally:
-                    await browser.close()
+
+        for site, poster in other_posters.items():
+            if site not in jobs_by_site:
+                continue
+            if not CREDENTIALS.get(site, {}).get('email'):
+                logger.warning(f"Sin credenciales para {site}. Saltando.")
+                continue
+
+            async with async_playwright() as p:
+                for job in jobs_by_site[site]:
+                    browser, context = await poster.get_browser_context(p)
+                    page = await context.new_page()
+                    try:
+                        result = await poster.apply(page, job['url'], CREDENTIALS.get(site))
+                        success, error_msg = result if isinstance(result, tuple) else (result, None)
+                        await poster.mark_applied(job['id'], success, error_msg)
+                        if success:
+                            applied_successfully.append(dict(job))
+                    except Exception as e:
+                        logger.error(f"Error en {site} job id={job['id']}: {e}")
+                        await poster.mark_applied(job['id'], False, str(e))
+                    finally:
+                        await browser.close()
+
 
     # 4. Enviar resumen si hubo actividad
     if applied_successfully or manual_jobs:

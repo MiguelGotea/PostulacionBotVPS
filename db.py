@@ -82,6 +82,62 @@ async def init_db():
                 VALUES (?, ?)
             """, (key, value))
         
+        # Tabla de perfiles de candidatos
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS candidate_profiles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                is_active INTEGER DEFAULT 1,
+                name TEXT NOT NULL,
+                email TEXT,
+                phone TEXT,
+                location TEXT,
+                birth_date TEXT,
+                civil_status TEXT,
+                address TEXT,
+                education TEXT,
+                experience TEXT,
+                skills TEXT,
+                languages TEXT,
+                salary_expectation TEXT,
+                availability TEXT,
+                about TEXT,
+                applied_sites TEXT DEFAULT 'all',
+                created_at TEXT DEFAULT (datetime('now', '-6 hours'))
+            )
+        """)
+
+        # Semilla: perfil de Katty Valentina Coleman
+        await db.execute("""
+            INSERT OR IGNORE INTO candidate_profiles
+            (id, name, email, phone, location, birth_date, civil_status, address,
+             education, experience, skills, languages, salary_expectation, availability, about, applied_sites)
+            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'all')
+        """, (
+            "Katty Valentina Coleman Antonio",
+            "kmolly220@gmail.com",
+            "8667-6024",
+            "Managua, Nicaragua",
+            "07 de mayo de 2005",
+            "Soltera",
+            "Resd. Jardines de Veracruz, Casa G22, Managua",
+            "Licenciatura en Marketing, Universidad Central de Nicaragua (2022-Presente, en curso); "
+            "Bachillerato en Ciencias y Letras, Colegio Buenas Orientaciones (2019-2021)",
+            "Mesera / Atención al Cliente en Unic Grill & Chill (sep-oct 2025): atención directa, "
+            "manejo de múltiples mesas, coordinación con cocina, gestión de caja y pagos. "
+            "Mesera / Atención al Cliente en Sabor Persa (nov-dic 2025): servicio en restaurante "
+            "especializado, asesoría a clientes sobre menú, resolución de situaciones con profesionalismo.",
+            "Microsoft Office (Word, Excel, PowerPoint - nivel intermedio), Atención al cliente presencial, "
+            "Manejo de conflictos, Trabajo en equipo, Gestión de múltiples tareas, Adaptabilidad, "
+            "Redes sociales, Análisis de mercado básico, Publicidad",
+            "Español (nativo)",
+            "C$8,000 - C$12,000 mensuales",
+            "Inmediata, tiempo completo o medio tiempo",
+            "Joven profesional nicaragüense con experiencia en atención al cliente en entornos de ritmo "
+            "acelerado. Estudiante activa de Marketing en la Universidad Central de Nicaragua. "
+            "Me caracterizo por mi actitud proactiva, puntualidad y capacidad para adaptarme "
+            "rápidamente a diferentes ambientes de trabajo.",
+        ))
+
         await db.commit()
     return True
 

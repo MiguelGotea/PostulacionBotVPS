@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block title %}Katty Jobs — Candidatos{% endblock %}
+
+{% block content %}
+<div class="content-header">
+    <h1>Perfiles de Candidatos</h1>
+    <p>Gestiona los datos de los candidatos usados para las postulaciones automáticas.</p>
+</div>
+
+{% if request.query_params.get('msg') %}
+<div class="alert alert-success">✅ {{ request.query_params.get('msg')|replace('+', ' ') }}</div>
+{% endif %}
+
+{% for profile in profiles %}
+<div class="profile-card">
+    <div class="profile-card-header">
+        <div class="profile-identity">
+            <div class="profile-avatar">{{ profile.name[0] }}</div>
+            <div>
+                <h2 class="profile-name">{{ profile.name }}</h2>
+                <span class="profile-meta">{{ profile.email }} · {{ profile.phone }}</span>
+            </div>
+        </div>
+        <div class="profile-badges">
+            {% if profile.is_active %}
+                <span class="status-badge status-applied">Activo</span>
+            {% else %}
+                <span class="status-badge status-failed">Inactivo</span>
+            {% endif %}
+            <span class="site-badge badge-tecoloco">{{ profile.applied_sites }}</span>
+        </div>
+    </div>
+
+    <form method="post" action="/profile/update/{{ profile.id }}" class="profile-form">
+        <input type="hidden" name="is_active" value="{{ profile.is_active }}">
+
+        <div class="profile-grid">
+
+            <!-- Columna 1: Datos personales -->
+            <div class="profile-section">
+                <h3>📋 Datos Personales</h3>
+                <div class="form-group">
+                    <label>Nombre completo</label>
+                    <input class="form-input" type="text" name="name" value="{{ profile.name or '' }}" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Teléfono</label>
+                        <input class="form-input" type="text" name="phone" value="{{ profile.phone or '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label>Ubicación</label>
+                        <input class="form-input" type="text" name="location" value="{{ profile.location or '' }}">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Fecha de nacimiento</label>
+                        <input class="form-input" type="text" name="birth_date" value="{{ profile.birth_date or '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label>Estado civil</label>
+                        <input class="form-input" type="text" name="civil_status" value="{{ profile.civil_status or '' }}">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Dirección</label>
+                    <input class="form-input" type="text" name="address" value="{{ profile.address or '' }}">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Expectativa salarial</label>
+                        <input class="form-input" type="text" name="salary_expectation" value="{{ profile.salary_expectation or '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label>Disponibilidad</label>
+                        <input class="form-input" type="text" name="availability" value="{{ profile.availability or '' }}">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Idiomas</label>
+                    <input class="form-input" type="text" name="languages" value="{{ profile.languages or '' }}">
+                </div>
+                <div class="form-group">
+                    <label>Sitios donde aplica</label>
+                    <select class="form-input" name="applied_sites">
+                        <option value="all" {% if profile.applied_sites == 'all' %}selected{% endif %}>Todos los portales</option>
+                        <option value="tecoloco" {% if profile.applied_sites == 'tecoloco' %}selected{% endif %}>Solo Tecoloco</option>
+                        <option value="computrabajo" {% if profile.applied_sites == 'computrabajo' %}selected{% endif %}>Solo Computrabajo</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Columna 2: CV -->
+            <div class="profile-section">
+                <h3>🎓 Formación y Experiencia</h3>
+                <div class="form-group">
+                    <label>Perfil profesional / Sobre mí</label>
+                    <textarea class="form-input form-textarea" name="about" rows="4">{{ profile.about or '' }}</textarea>
+                </div>
+                <div class="form-group">
+                    <label>Educación</label>
+                    <textarea class="form-input form-textarea" name="education" rows="3">{{ profile.education or '' }}</textarea>
+                </div>
+                <div class="form-group">
+                    <label>Experiencia laboral</label>
+                    <textarea class="form-input form-textarea" name="experience" rows="5">{{ profile.experience or '' }}</textarea>
+                </div>
+                <div class="form-group">
+                    <label>Habilidades</label>
+                    <textarea class="form-input form-textarea" name="skills" rows="3">{{ profile.skills or '' }}</textarea>
+                </div>
+
+                <div class="profile-actions">
+                    <button type="submit" class="btn btn-apply">💾 Guardar Cambios</button>
+                </div>
+            </div>
+
+        </div>
+    </form>
+</div>
+{% else %}
+<div class="empty-state">
+    <p>No hay perfiles de candidatos registrados.</p>
+</div>
+{% endfor %}
+{% endblock %}

@@ -43,8 +43,11 @@
                 <td>{{ job.company }}</td>
                 <td><span class="site-badge badge-{{ job.site|lower }}">{{ job.site }}</span></td>
                 <td>
-                    <span class="status-badge status-{{ job.status|lower }}">
-                        {{ job.status|capitalize }}
+                    <span class="status-badge status-{{ job.status|lower|replace('_','-') }}">
+                        {% if job.status == 'applied' %}✅ Aplicado
+                        {% elif job.status == 'no_cumple' %}⚠️ No Cumple
+                        {% elif job.status == 'failed' %}❌ Fallido
+                        {% else %}{{ job.status|capitalize }}{% endif %}
                     </span>
                 </td>
                 <td class="error-cell">{{ job.error_message or '-' }}</td>
