@@ -1,24 +1,19 @@
 """
 poster/tecoloco.py — Flujo de postulación en Tecoloco.com.ni
 
-Estrategia de sesión (ReturnUrl):
-  Para cada oferta:
-    1. Ir directo a /Jobs/Aplicar/{id}
-    2. Si redirige a login.aspx?ReturnUrl=... → hacer login AHORA
-       → Tecoloco redirige automáticamente de vuelta a /Jobs/Aplicar/{id}
-    3. Selección de CV → detección no_cumple → IR A PREGUNTAS
-    4. Formulario de preguntas → Gemini AI → APLICAR
-
-Ventaja vs login_once():
-  - No depende de que la sesión persista entre navegaciones
-  - El primer job hace el login; los siguientes reutilizan la cookie
-  - Si la sesión expira a mitad del ciclo, se re-loguea automáticamente
+Estrategia de autenticación:
+  1. _login_via_http() → aiohttp hace POST del formulario ASP.NET
+     (sin browser → evita detección de Akamai/bot challenges en login)
+  2. Las cookies de sesión se inyectan en el contexto de Playwright
+  3. Playwright navega a la página del job y hace click en APLICAR
+     (ya tiene sesión válida → va directo a /Jobs/Aplicar/{id})
+  4. Selección de CV → preguntas → Gemini AI → APLICAR
 """
 import asyncio
 import logging
 import random
 import re
-import aiosqlite
+import aiohttp
 
 from poster.base import BasePoster
 from poster.ai_responder import answer_questions
@@ -29,125 +24,93 @@ logger = logging.getLogger(__name__)
 BASE_URL  = "https://www.tecoloco.com.ni"
 LOGIN_URL = f"{BASE_URL}/login.aspx"
 
+_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "es-NI,es;q=0.9,en;q=0.8",
+}
+
 
 class TecolocoPoster(BasePoster):
 
     def __init__(self):
         super().__init__("tecoloco")
+        self._session_cookies: list[dict] = []   # cache de cookies entre jobs
 
     # ─────────────────────────────────────────────
-    # LOGIN EMBEBIDO (se activa cuando necesario)
+    # LOGIN VÍA HTTP  (sin browser headless)
     # ─────────────────────────────────────────────
 
-    async def _do_login(self, page, credentials: dict) -> bool:
+    async def _login_via_http(self, credentials: dict) -> list[dict] | None:
         """
-        Login robusto: prueba múltiples selectores sin wait_for_selector fijo.
-        Compatible con formularios ASP.NET dinámicos.
+        Hace login mediante HTTP POST directo (aiohttp).
+        Evita la detección del navegador headless en la página de login.
+
+        Retorna la lista de cookies para inyectar en el contexto de Playwright.
         """
-        creds = credentials or CREDENTIALS.get('tecoloco', {})
+        email    = credentials.get('email', '')
+        password = credentials.get('password', '')
+
         try:
-            logger.info(f"[{self.site_name}] Realizando login desde: {page.url[:80]}")
+            jar = aiohttp.CookieJar(unsafe=True)
+            async with aiohttp.ClientSession(cookie_jar=jar, headers=_HEADERS) as session:
 
-            # Esperar que la red esté tranquila (JS puede cargar el formulario tarde)
-            try:
-                await page.wait_for_load_state("networkidle", timeout=15000)
-            except Exception:
-                pass  # Si networkidle tarda, continuar igual
-            await asyncio.sleep(1.5)
+                # 1. GET login page → extraer campos ocultos ASP.NET ──────────
+                async with session.get(LOGIN_URL) as resp:
+                    html = await resp.text()
 
-            # ── Llenar email (tipo 'text' confirmado en Tecoloco, NO 'email') ──
-            email_filled = False
-            for sel in [
-                "#Email",                         # selector directo, más seguro
-                "#txtEmail",
-                "input[name='Email']",             # por name también
-                "input[type='text'][placeholder*='Correo']",
-                "input[type='email']",
-                "input[name*='Email']",
-            ]:
-                try:
-                    el = await page.query_selector(sel)
-                    if el:
-                        await el.fill(creds['email'])  # sin is_visible() — puede estar oculto en headless
-                        email_filled = True
-                        logger.info(f"[{self.site_name}] Email llenado con: {sel}")
-                        break
-                except Exception:
-                    continue
+                vs_match  = re.search(r'id="__VIEWSTATE"\s+value="([^"]*)"', html)
+                evv_match = re.search(r'id="__EVENTVALIDATION"\s+value="([^"]*)"', html)
+                vsg_match = re.search(r'id="__VIEWSTATEGENERATOR"\s+value="([^"]*)"', html)
 
-            if not email_filled:
-                # Último recurso: primer input no-password visible
-                all_inputs = await page.query_selector_all(
-                    "input:not([type='hidden']):not([type='submit']):not([type='password'])"
-                )
-                for inp in all_inputs:
-                    try:
-                        await inp.fill(creds['email'])
-                        email_filled = True
-                        logger.info(f"[{self.site_name}] Email llenado via fallback genérico")
-                        break
-                    except Exception:
-                        continue
+                if not vs_match:
+                    # Si no hay VIEWSTATE → página de challenge / bloqueo
+                    logger.error(f"[{self.site_name}] HTTP login: no se encontró __VIEWSTATE")
+                    logger.debug(f"HTML snippet: {html[:600]}")
+                    return None
 
-            if not email_filled:
-                logger.error(f"[{self.site_name}] No se encontró campo de email")
-                return False
+                form_data = {
+                    "Email":                   email,
+                    "Password":                password,
+                    "loginButton":             "INICIO CANDIDATOS",
+                    "__VIEWSTATE":             vs_match.group(1),
+                    "__EVENTVALIDATION":       evv_match.group(1) if evv_match else "",
+                    "__VIEWSTATEGENERATOR":    vsg_match.group(1) if vsg_match else "",
+                }
 
-            await asyncio.sleep(random.uniform(0.4, 0.9))
+                # 2. POST login form ──────────────────────────────────────────
+                post_headers = {
+                    **_HEADERS,
+                    "Content-Type": "application/x-www-form-urlencoded",
+                    "Referer": LOGIN_URL,
+                }
+                async with session.post(
+                    LOGIN_URL, data=form_data,
+                    headers=post_headers,
+                    allow_redirects=True
+                ) as resp:
+                    final_url = str(resp.url)
 
-            # ── Llenar contraseña ──
-            pass_filled = False
-            for sel in ["#Password", "#txtPassword", "input[type='password']"]:
-                try:
-                    el = await page.query_selector(sel)
-                    if el:
-                        await el.fill(creds['password'])
-                        pass_filled = True
-                        break
-                except Exception:
-                    continue
+                if "login.aspx" in final_url.lower():
+                    logger.error(f"[{self.site_name}] HTTP login falló (sigue en login). URL: {final_url}")
+                    return None
 
-            if not pass_filled:
-                logger.error(f"[{self.site_name}] No se encontró campo de contraseña")
-                return False
+                # 3. Extraer cookies de la sesión ────────────────────────────
+                cookies = []
+                for cookie in jar:
+                    cookies.append({
+                        "name":   cookie.key,
+                        "value":  cookie.value,
+                        "domain": "www.tecoloco.com.ni",
+                        "path":   "/",
+                    })
 
-            await asyncio.sleep(random.uniform(0.8, 1.5))
-
-            # ── Click en botón de login ──
-            btn_clicked = False
-            for sel in [
-                "button:has-text('INICIO CANDIDATOS')",
-                "button:has-text('Iniciar sesión')",
-                "#loginButton",
-                "button[type='submit']",
-                "input[type='submit']",
-            ]:
-                try:
-                    el = await page.query_selector(sel)
-                    if el and await el.is_visible():
-                        await el.click()
-                        btn_clicked = True
-                        break
-                except Exception:
-                    continue
-
-            if not btn_clicked:
-                logger.error(f"[{self.site_name}] No se encontró botón de login")
-                return False
-
-            await page.wait_for_load_state("domcontentloaded", timeout=30000)
-            await asyncio.sleep(random.uniform(2, 3))
-
-            if "login.aspx" in page.url.lower():
-                logger.error(f"[{self.site_name}] ❌ Login falló — aún en login.aspx")
-                return False
-
-            logger.info(f"[{self.site_name}] ✅ Login exitoso → {page.url[:80]}")
-            return True
+                logger.info(f"[{self.site_name}] ✅ HTTP Login exitoso → {final_url[:60]}  ({len(cookies)} cookies)")
+                return cookies
 
         except Exception as e:
-            logger.error(f"[{self.site_name}] Error en _do_login: {e}")
-            return False
+            logger.error(f"[{self.site_name}] Error en HTTP login: {e}")
+            return None
 
     # ─────────────────────────────────────────────
     # POSTULACIÓN PRINCIPAL
@@ -155,20 +118,19 @@ class TecolocoPoster(BasePoster):
 
     async def apply(self, page, job_url, credentials=None):
         """
-        Aplica a una oferta. Maneja el login inline si es necesario.
+        Aplica a una oferta.
 
         Flujo:
-          1. Extrae job_id de la URL
-          2. Navega a /Jobs/Aplicar/{id}
-          3. Si redirige a login.aspx → hace login → ReturnUrl lleva de vuelta
-          4. Selección de CV
-          5. Preguntas → Gemini AI
-          6. Submit final
+          1. Login vía HTTP (aiohttp) → obtiene cookies de sesión
+          2. Inyecta cookies en el contexto de Playwright
+          3. Navega a la página del job → click APLICAR
+             (ya logueado → va directo a /Jobs/Aplicar/{id})
+          4. Selección de CV → preguntas → Gemini AI → submit
 
         Returns:
-            (True,  None)             → Éxito
-            (False, 'no_cumple: X')  → No cumple requisitos
-            (False, 'mensaje error') → Fallo técnico
+            (True,  None)            → Éxito
+            (False, 'no_cumple: X') → No cumple requisitos
+            (False, 'mensaje')       → Fallo técnico
         """
         creds = credentials or CREDENTIALS.get('tecoloco', {})
 
@@ -181,63 +143,51 @@ class TecolocoPoster(BasePoster):
                 return False, f"No se pudo extraer ID de: {job_url}"
             job_id = match.group(1)
 
-            # ── PASO 0: Ir a la página del trabajo y click APLICAR ──
-            # Flujo natural: job_page → click APLICAR → /Jobs/Aplicar/{id}
+            # ── Login vía HTTP (si no tenemos cookies cacheadas) ────
+            if not self._session_cookies:
+                cookies = await self._login_via_http(creds)
+                if not cookies:
+                    return False, "HTTP login falló — sin cookies de sesión"
+                self._session_cookies = cookies
+
+            # Inyectar cookies en el contexto del browser
+            try:
+                await page.context.add_cookies(self._session_cookies)
+            except Exception as e:
+                logger.warning(f"[{self.site_name}] Error inyectando cookies: {e}")
+
+            # ── PASO 0: Ir a la página del job → click APLICAR ─────
             await page.goto(job_url, wait_until="domcontentloaded", timeout=60000)
             await asyncio.sleep(random.uniform(2, 3))
 
-            # Buscar el botón APLICAR — en Tecoloco tiene clase 'apply-now linktowebsite'
             apply_btn = await page.query_selector(
-                "a.apply-now, "            # captura tanto la variante con y sin linktowebsite
+                "a.apply-now, "
                 "a[href*='Jobs/Aplicar'], "
                 "a:has-text('Postularme')"
             )
 
-            if not apply_btn:
-                # Intentar construir la URL directamente
-                logger.warning(f"[{self.site_name}] Botón APLICAR no encontrado en {job_url}, usando URL directa")
-                await page.goto(f"{BASE_URL}/Jobs/Aplicar/{job_id}", wait_until="domcontentloaded", timeout=60000)
-                await asyncio.sleep(random.uniform(1.5, 2.5))
-            else:
+            if apply_btn:
                 href = await apply_btn.get_attribute("href") or ""
                 logger.info(f"[{self.site_name}] Botón APLICAR encontrado: {href[:60]}")
                 await apply_btn.click()
                 await page.wait_for_load_state("domcontentloaded", timeout=30000)
                 await asyncio.sleep(random.uniform(2, 3))
+            else:
+                logger.warning(f"[{self.site_name}] Botón APLICAR no encontrado, navegando directo")
+                await page.goto(f"{BASE_URL}/Jobs/Aplicar/{job_id}", wait_until="domcontentloaded", timeout=60000)
+                await asyncio.sleep(random.uniform(1.5, 2.5))
 
-            # ── Login inline si fue redirigido a login.aspx ─────────
+            # ── Si aún en login → sesión inválida, limpiar cache ───
             if "login.aspx" in page.url.lower():
-                logged_in = await self._do_login(page, creds)
-                if not logged_in:
-                    return False, "Login fallido durante apply"
+                self._session_cookies = []   # invalidar cache para próximo job
+                return False, f"Sesión inválida tras click APLICAR. URL: {page.url}"
 
-                # Después del login, volver a la página del trabajo y click APLICAR
-                await page.goto(job_url, wait_until="domcontentloaded", timeout=60000)
-                await asyncio.sleep(random.uniform(2, 3))
-
-                apply_btn2 = await page.query_selector(
-                    "a.apply-now, "
-                    "a[href*='Jobs/Aplicar']"
-                )
-                if apply_btn2:
-                    await apply_btn2.click()
-                    await page.wait_for_load_state("domcontentloaded", timeout=30000)
-                    await asyncio.sleep(random.uniform(2, 3))
-                else:
-                    await page.goto(f"{BASE_URL}/Jobs/Aplicar/{job_id}", wait_until="domcontentloaded", timeout=60000)
-                    await asyncio.sleep(random.uniform(1.5, 2.5))
-
-                if "login.aspx" in page.url.lower():
-                    return False, "Login falló, redirigido de nuevo a login.aspx"
-
-            # ── PASO 1: Selección de CV ─────────────────────────────
+            # ── PASO 1: Selección de CV (/Jobs/Aplicar/{id}) ────────
             if "/jobs/aplicar/" in page.url.lower():
 
-                # Seleccionar primer CV disponible
                 cv_radio = await page.query_selector("input[name='CurriculoId']")
-                if cv_radio:
-                    if not await cv_radio.is_checked():
-                        await cv_radio.click()
+                if cv_radio and not await cv_radio.is_checked():
+                    await cv_radio.click()
                     await asyncio.sleep(0.5)
 
                 # Detectar "no cumple requisitos"
@@ -250,7 +200,6 @@ class TecolocoPoster(BasePoster):
                             logger.info(f"[{self.site_name}] no_cumple: {motivo[:80]}")
                             return False, f"no_cumple: {motivo}"
 
-                # Click en "IR A PREGUNTAS" (o APLICAR directo si no hay preguntas)
                 go_btn = await page.query_selector(
                     "button#goToQuestions, "
                     "button:has-text('IR A PREGUNTAS'), "
@@ -280,9 +229,7 @@ class TecolocoPoster(BasePoster):
                 questions = []
                 for i, textarea in enumerate(textareas):
                     ta_id  = await textarea.get_attribute("id") or f"q_{i}"
-                    q_text = ""
-                    if i < len(labels):
-                        q_text = (await labels[i].inner_text()).strip()
+                    q_text = (await labels[i].inner_text()).strip() if i < len(labels) else ""
                     questions.append({"id": ta_id, "text": q_text})
 
                 logger.info(f"[{self.site_name}] {len(questions)} preguntas → Gemini AI")
@@ -291,7 +238,7 @@ class TecolocoPoster(BasePoster):
                     answers = await answer_questions(questions, profile)
                     for q in questions:
                         ans = answers.get(q["id"], "")
-                        if ans and q["id"]:
+                        if ans:
                             el = await page.query_selector(f"#{q['id']}")
                             if el:
                                 await el.fill(ans)
@@ -327,8 +274,12 @@ class TecolocoPoster(BasePoster):
     # ─────────────────────────────────────────────
 
     async def login(self, page, credentials) -> bool:
-        return await self._do_login(page, credentials)
+        cookies = await self._login_via_http(credentials)
+        if cookies:
+            self._session_cookies = cookies
+            await page.context.add_cookies(cookies)
+            return True
+        return False
 
     async def login_once(self, page, credentials=None) -> bool:
-        """Deprecated: mantenido para compatibilidad. El login ahora es inline en apply()."""
-        return await self._do_login(page, credentials or CREDENTIALS.get('tecoloco', {}))
+        return await self.login(page, credentials or CREDENTIALS.get('tecoloco', {}))
