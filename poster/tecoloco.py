@@ -207,31 +207,35 @@ class TecolocoPoster(BasePoster):
                     await cv_radio.click()
                     await asyncio.sleep(0.5)
 
-                # Detectar "no cumple requisitos"
-                for sel in [".alert-warning", ".alert-danger", ".alert"]:
-                    alert_el = await page.query_selector(sel)
-                    if alert_el:
-                        texto = (await alert_el.inner_text()).strip().lower()
-                        if "no cumple" in texto or "requisito" in texto:
-                            motivo = re.sub(r'\s+', ' ', texto)[:300]
-                            logger.info(f"[{self.site_name}] no_cumple: {motivo[:80]}")
-                            return False, f"no_cumple: {motivo}"
-
+                # El criterio REAL de bloqueo es la AUSENCIA del botón de aplicar,
+                # NO el texto del alert (Tecoloco muestra avisos de requisitos opcionales
+                # aunque puedas aplicar igual).
                 go_btn = await page.query_selector(
+                    "button:has-text('APLICAR A ESTA OFERTA'), "
+                    "a:has-text('APLICAR A ESTA OFERTA'), "
                     "button#goToQuestions, "
                     "button:has-text('IR A PREGUNTAS'), "
-                    "a:has-text('IR A PREGUNTAS')"
+                    "a:has-text('IR A PREGUNTAS'), "
+                    "button:has-text('APLICAR'), "
+                    "button#applyButton, "
+                    "input[type='submit']"
                 )
-                if not go_btn:
-                    go_btn = await page.query_selector(
-                        "button:has-text('APLICAR'), "
-                        "button#applyButton, "
-                        "input[type='submit']"
-                    )
 
                 if not go_btn:
-                    return False, f"Botón continuar no encontrado en: {page.url}"
+                    # Solo ahora es un no_cumple real → extraer razón del alert
+                    motivo = "Sin botón APLICAR en la página"
+                    for sel in [".alert-danger", ".alert-warning", ".alert"]:
+                        alert_el = await page.query_selector(sel)
+                        if alert_el:
+                            texto = (await alert_el.inner_text()).strip().lower()
+                            if "no cumple" in texto or "requisito" in texto or "bloqueado" in texto:
+                                motivo = re.sub(r'\s+', ' ', texto)[:300]
+                                break
+                    logger.info(f"[{self.site_name}] no_cumple: {motivo[:80]}")
+                    return False, f"no_cumple: {motivo}"
 
+                btn_text = (await go_btn.inner_text()).strip()
+                logger.info(f"[{self.site_name}] Botón '{btn_text}' encontrado → aplicando")
                 await go_btn.click()
                 await page.wait_for_load_state("domcontentloaded", timeout=30000)
                 await asyncio.sleep(random.uniform(2, 3))
@@ -276,7 +280,27 @@ class TecolocoPoster(BasePoster):
 
             # ── PASO 3: Verificar resultado ─────────────────────────
             final_url = page.url.lower()
-            if "login.aspx" in final_url or "error" in final_url:
+
+            # URLs de éxito conocidas:
+            # - /Jobs/ApplyToJobOffer?jobId=...  (aplicación directa sin preguntas)
+            # - /Jobs/ApplyQuestions/...         (después de responder preguntas)
+            success_urls = ("applytojoboffers", "applytojoboffers", "applytojob", "confirmacion", "gracias")
+            is_success = any(s in final_url for s in success_urls)
+
+            # También verificar texto de confirmación en la página
+            if not is_success:
+                try:
+                    body_text = await page.inner_text("body")
+                    if "hemos enviado" in body_text.lower() or "aplicación enviada" in body_text.lower():
+                        is_success = True
+                except Exception:
+                    pass
+
+            if "login.aspx" in final_url:
+                self._session_cookies = []   # sesión expiró
+                return False, f"Sesión expiró tras submit. URL: {page.url}"
+
+            if not is_success and "error" in final_url:
                 return False, f"Error tras submit. URL: {page.url}"
 
             logger.info(f"[{self.site_name}] ✅ Postulación enviada → {page.url[:80]}")
