@@ -367,12 +367,21 @@ class TecolocoPoster(BasePoster):
             except Exception as e:
                 logger.warning(f"[{self.site_name}] Error inyectando cookies: {e}")
 
-            # ── PASO 0: Ir a la página del job → leer empresa real → click APLICAR ─
+            # ── PASO 0: Ir a la página del job → leer empresa + ubicación real ─
             await page.goto(job_url, wait_until="domcontentloaded", timeout=60000)
             await asyncio.sleep(random.uniform(2, 3))
 
             # Leer nombre real de empresa (puede estar oculto en el card de búsqueda)
             await self._update_company_from_page(page, job_db_id)
+
+            # Leer ubicación desde la página (siempre, para tener dato actualizado)
+            page_location = await self._read_location_from_page(page, job_db_id)
+            # Si la DB estaba vacía y ahora tenemos location, verificar departamento
+            if page_location and not location:
+                dept_result = await self._check_department(page_location)
+                if dept_result is not None:
+                    logger.info(f"[{self.site_name}] {dept_result}: {page_location!r}")
+                    return False, dept_result
 
             apply_btn = await page.query_selector(
                 "a.apply-now, "
