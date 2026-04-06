@@ -163,30 +163,41 @@ class ComputrabajoPoster(BasePoster):
             logger.info(f"[{self.site_name}] Login via homepage → {LOGIN_ENTRY_URL}")
             await page.goto(LOGIN_ENTRY_URL, wait_until="domcontentloaded", timeout=60000)
             await asyncio.sleep(random.uniform(2, 3))
+            logger.info(f"[{self.site_name}] Homepage cargada. URL: {page.url[:80]}")
 
-            # Click en botón "Login" del nav (abre dropdown)
-            login_nav = await page.query_selector(
-                "a[href*='login'], button:has-text('Login'), "
-                "a:has-text('Login'), li.login, .js-login-btn"
-            )
-            if login_nav:
-                await login_nav.click()
-                await asyncio.sleep(random.uniform(0.8, 1.5))
+            # Estrategia 1: extraer la URL de login del DOM sin clicks
+            # El botón "Ingresar" del dropdown tiene un href con Account/Login
+            login_href = await page.evaluate("""
+                () => {
+                    // Buscar cualquier link que apunte al login de candidatos
+                    const links = [...document.querySelectorAll('a')];
+                    const login = links.find(a =>
+                        a.href && (
+                            a.href.includes('Account/Login') ||
+                            a.href.includes('candidato') ||
+                            (a.innerText && a.innerText.trim() === 'Ingresar')
+                        )
+                    );
+                    return login ? login.href : null;
+                }
+            """)
 
-            # Click en "Ingresar" dentro del dropdown
-            ingresar = await page.query_selector(
-                "a:has-text('Ingresar'), button:has-text('Ingresar'), "
-                "a.js-candidatos-login"
-            )
-            if ingresar:
-                await ingresar.click()
+            if login_href:
+                logger.info(f"[{self.site_name}] Login URL extraída: {login_href[:80]}")
+                await page.goto(login_href, wait_until="domcontentloaded", timeout=60000)
                 await asyncio.sleep(random.uniform(2, 3))
             else:
-                # Fallback: buscar enlace directo de login
-                direct = await page.query_selector("a[href*='Account/Login']")
-                if direct:
-                    await direct.click()
+                # Estrategia 2: click directo por texto visible
+                logger.warning(f"[{self.site_name}] No se encontró href de login, intentando click por texto")
+                try:
+                    await page.click("text=Login", timeout=5000)
+                    await asyncio.sleep(random.uniform(0.8, 1.5))
+                    await page.click("text=Ingresar", timeout=5000)
                     await asyncio.sleep(random.uniform(2, 3))
+                except Exception as ce:
+                    logger.warning(f"[{self.site_name}] Click por texto falló: {ce}")
+
+            logger.info(f"[{self.site_name}] URL tras navegación login: {page.url[:80]}")
 
             # Esperar formulario de login
             try:
