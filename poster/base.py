@@ -66,39 +66,26 @@ class BasePoster(abc.ABC):
         delay = random.uniform(MIN_DELAY, MAX_DELAY)
         await asyncio.sleep(delay)
 
-    async def get_browser_context(self, playwright, headless=True):
+    async def get_browser_context(self, playwright, headless=True, proxy=None):
         """
-        Contexto de navegador con anti-detección activa + Tor proxy.
-        - Proxy Tor (SOCKS5 9050) para evadir bloqueo Cloudflare desde datacenter
-        - Desactiva la bandera AutomationControlled  
-        - Sobreescribe navigator.webdriver vía init script
-        - Simula perfil real: locale NI, zona horaria Managua
+        Retorna un contexto de navegador con stealth completo.
+        Usa utils/stealth.py para unificar la lógica de anti-detección y soporte de proxy.
         """
-        browser = await playwright.chromium.launch(
-            headless=headless,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--no-first-run",
-                "--no-service-autorun",
-                "--password-store=basic",
-            ]
-        )
-        context = await browser.new_context(
-            user_agent=random.choice(USER_AGENTS),
-            viewport={'width': random.randint(1280, 1920), 'height': random.randint(720, 1080)},
-            locale='es-NI',
-            timezone_id='America/Managua',
-            extra_http_headers={
-                'Accept-Language': 'es-NI,es;q=0.9,en;q=0.8',
-            }
-        )
-        # Eliminar la propiedad webdriver que delata al bot
-        await context.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-            Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3] });
-            window.chrome = { runtime: {} };
-        """)
-        return browser, context
+        try:
+            from utils.stealth import stealth_context
+            return await stealth_context(playwright, headless=headless, proxy_url=proxy)
+        except ImportError:
+            # Fallback si no está la utilidad
+            browser = await playwright.chromium.launch(
+                headless=headless,
+                args=["--disable-blink-features=AutomationControlled"]
+            )
+            context = await browser.new_context(
+                user_agent=random.choice(USER_AGENTS),
+                locale='es-NI',
+                timezone_id='America/Managua'
+            )
+            return browser, context
 
     async def get_candidate_profile(self, profile_id: int = None) -> dict:
         """

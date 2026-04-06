@@ -85,23 +85,28 @@ def get_random_fingerprint() -> dict:
     }
 
 
-async def stealth_context(playwright, headless: bool = True):
+async def stealth_context(playwright, headless: bool = True, proxy_url: str = None):
     """
     Crea un browser + context de Playwright con fingerprint aleatorio y
     configuración stealth para evitar detección de bots.
     Retorna: (browser, context)
     """
     fp = get_random_fingerprint()
-    browser = await playwright.chromium.launch(
-        headless=headless,
-        args=[
+    launch_args = {
+        "headless": headless,
+        "args": [
             "--no-sandbox",
             "--disable-blink-features=AutomationControlled",
             "--disable-dev-shm-usage",
             "--disable-infobars",
             "--disable-extensions",
         ]
-    )
+    }
+    if proxy_url:
+        launch_args["proxy"] = {"server": proxy_url}
+        logger.info(f"[Stealth] Usando proxy: {proxy_url}")
+
+    browser = await playwright.chromium.launch(**launch_args)
     context = await browser.new_context(
         user_agent=fp["user_agent"],
         viewport=fp["viewport"],

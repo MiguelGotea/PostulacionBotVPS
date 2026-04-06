@@ -12,6 +12,15 @@ class AcciontrabajoPoster(BasePoster):
         super().__init__("acciontrabajo")
         self.base_url = "https://ni.acciontrabajo.com/"
 
+    async def get_browser_context(self, playwright, headless=True, proxy=None):
+        """
+        Sobreescribe el método base para forzar el uso del proxy Tor 
+        específicamente en AccionTrabajo.
+        """
+        # Forzar el proxy de Tor para este sitio
+        tor_proxy = "socks5://127.0.0.1:9050"
+        return await super().get_browser_context(playwright, headless=headless, proxy=tor_proxy)
+
     async def _check_department(self, location: str) -> str | None:
         """
         Verifica si el departamento está en los permitidos.

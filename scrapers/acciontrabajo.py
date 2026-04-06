@@ -23,7 +23,7 @@ class AcciontrabajoScraper(BaseScraper):
 
     async def scrape(self, playwright) -> list[dict]:
         all_jobs = []
-        browser, context = await self.get_browser_context(playwright)
+        browser, context = await self.get_browser_context(playwright, proxy="socks5://127.0.0.1:9050")
         page = await context.new_page()
         # Timeout extendido para el VPS
         page.set_default_timeout(60000) 

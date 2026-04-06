@@ -92,14 +92,14 @@ class BaseScraper(abc.ABC):
         ) as cursor:
             return await cursor.fetchone() is None
 
-    async def get_browser_context(self, playwright, headless: bool = True):
+    async def get_browser_context(self, playwright, headless: bool = True, proxy: str = None):
         """
         Retorna un contexto de navegador con stealth completo.
         Usa utils/stealth.py si está disponible, sino fallback al método legado.
         """
         try:
             from utils.stealth import stealth_context
-            return await stealth_context(playwright, headless=headless)
+            return await stealth_context(playwright, headless=headless, proxy_url=proxy)
         except ImportError:
             # Fallback al método original
             browser = await playwright.chromium.launch(headless=headless)
