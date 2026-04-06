@@ -49,6 +49,7 @@ class ComputrabajoScraper(BaseScraper):
     # Browser context con anti-detección
     # ──────────────────────────────────────────
 
+
     async def get_browser_context(self, playwright):
         """
         Override del base: usa Firefox headless para evadir el bloqueo 403
