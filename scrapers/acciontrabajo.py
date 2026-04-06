@@ -30,56 +30,56 @@ class AcciontrabajoScraper(BaseScraper):
                 
                 try:
                     await page.goto(search_url, wait_until="networkidle", timeout=60000)
-                    await asyncio.sleep(3) # Esperar a que carguen los resultados AJAX
+                    await asyncio.sleep(3)
 
-                    # Intentar detectar el contenedor de resultados o los h2 directamente
-                    # A veces las ofertas están en un iframe o panel dinámico
-                    job_elements = await page.query_selector_all("h2")
-                    logger.info(f"[{self.site_name}] Encontrados {len(job_elements)} elementos H2")
+                    # Selector confirmado: .vacancy_card
+                    cards = await page.query_selector_all(".vacancy_card")
+                    logger.info(f"[{self.site_name}] Encontradas {len(cards)} tarjetas .vacancy_card")
                     
-                    if not job_elements:
-                        # Reintento con selectores alternativos
-                        job_elements = await page.query_selector_all(".vacancy-item h2, .job-item h2, a.job-link")
+                    if not cards:
+                        # Fallback a buscar h2 si .vacancy_card no aparece (renderizado distinto?)
+                        cards = await page.query_selector_all("h2")
 
-                    for el in job_elements:
+                    for card in cards:
                         try:
-                            title = (await el.inner_text()).strip()
+                            # 1. Título y URL
+                            # Si es .vacancy_card, el h2 está dentro
+                            title_el = await card.query_selector("h2")
+                            if not title_el and (await card.evaluate("el => el.tagName")) == "H2":
+                                title_el = card
+                            
+                            if not title_el:
+                                continue
+
+                            title = (await title_el.inner_text()).strip()
                             if not title or len(title) < 4:
                                 continue
 
-                            # Link
-                            url = await el.get_attribute("href")
-                            if not url:
-                                link_el = await el.query_selector("a")
-                                if link_el: url = await link_el.get_attribute("href")
+                            # Link: puede estar en el a que envuelve al h2 o ser el h2 si es fallback
+                            link_el = await card.query_selector("a")
+                            if not link_el and (await card.evaluate("el => el.tagName")) == "A":
+                                link_el = card
                             
-                            if not url or "javascript" in url:
+                            url = await link_el.get_attribute("href") if link_el else None
+                            if not url:
                                 continue
 
                             if not url.startswith("http"):
                                 url = self.base_url.rstrip("/") + (url if url.startswith("/") else f"/{url}")
 
-                            # Ubicación y Empresa
+                            # 2. Ubicación y Empresa
                             location = "Nicaragua"
                             company = "Confidencial"
                             
-                            # Intentar navegar hacia arriba al contenedor de la oferta
-                            # Según la captura, la info está bajo el H2 o en hermanos
-                            parent = await el.evaluate_handle("el => el.closest('div') || el.parentElement")
+                            # La ubicación suele ser el primer div después del link del título
+                            # La empresa está en un <b>
+                            company_el = await card.query_selector("b")
+                            if company_el:
+                                company = (await company_el.inner_text()).strip()
                             
-                            # Buscar en el parent o hermanos del titulo
-                            if parent:
-                                b_el = await parent.query_selector("b")
-                                if b_el:
-                                    company = (await b_el.inner_text()).strip()
-                                
-                                # La ubicación suele ser el primer div que no sea el título
-                                divs = await parent.query_selector_all("div")
-                                for d in divs:
-                                    txt = (await d.inner_text()).strip()
-                                    if txt and "," in txt and len(txt) < 100:
-                                        location = txt
-                                        break
+                            loc_el = await card.query_selector("div")
+                            if loc_el:
+                                location = (await loc_el.inner_text()).strip()
 
                             all_jobs.append({
                                 'title': title[:100],
@@ -90,7 +90,7 @@ class AcciontrabajoScraper(BaseScraper):
                                 'requires_manual': False
                             })
                         except Exception as e:
-                            logger.error(f"Error procesando elemento en {self.site_name}: {e}")
+                            logger.error(f"Error procesando tarjeta en {self.site_name}: {e}")
                             continue
 
                 except Exception as e:
@@ -100,16 +100,26 @@ class AcciontrabajoScraper(BaseScraper):
         finally:
             await browser.close()
 
-        # Eliminar duplicados y jobs sin URL
         unique_jobs = {j['url']: j for j in all_jobs if j.get('url')}.values()
         logger.info(f"[{self.site_name}] Total únicas encontradas: {len(unique_jobs)}")
         return list(unique_jobs)
 
 if __name__ == "__main__":
+    import os
+    # Asegurar que el directorio de logs existe
+    os.makedirs("logs", exist_ok=True)
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    )
     from playwright.async_api import async_playwright
     async def test():
         async with async_playwright() as p:
+            # Forzamos headless=False para ver qué pasa en el navegador (si el entorno lo permite)
+            # O simplemente usamos el default del scraper
             s = AcciontrabajoScraper()
             jobs = await s.scrape(p)
+            for j in jobs[:5]:
+                print(f"DEBUG: Found {j['title']} at {j['url']} (Location: {j['location']})")
             print(f"Encontrados {len(jobs)} empleos en {s.site_name}")
     asyncio.run(test())
