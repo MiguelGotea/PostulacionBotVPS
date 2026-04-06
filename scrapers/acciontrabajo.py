@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import urllib.parse
 from scrapers.base import BaseScraper
 from config import PLAYWRIGHT_TIMEOUT
 
@@ -14,10 +15,10 @@ class AcciontrabajoScraper(BaseScraper):
         all_jobs = []
         browser, context = await self.get_browser_context(playwright)
         page = await context.new_page()
-        page.set_default_timeout(PLAYWRIGHT_TIMEOUT)
+        # Aumentamos el timeout por defecto para el VPS a 45s
+        page.set_default_timeout(45000) 
 
         try:
-            import urllib.parse
             keywords = await self._get_keywords()
             if not keywords:
                 logger.warning(f"[{self.site_name}] No se encontraron keywords para escaneo.")
@@ -27,28 +28,39 @@ class AcciontrabajoScraper(BaseScraper):
                 logger.info(f"[{self.site_name}] Escaneando keyword: {keyword}")
                 
                 try:
-                    # Ir al home para usar el buscador real y evitar 404s en URLs directas
-                    await page.goto(self.base_url, wait_until="domcontentloaded", timeout=60000)
-                    await asyncio.sleep(2)
+                    # Intentar búsqueda directa para mayor velocidad y evitar problemas de carga del home
+                    q_encoded = urllib.parse.quote_plus(keyword)
+                    search_url = f"{self.base_url}buscar?q={q_encoded}&l=Nicaragua"
                     
-                    # Rellenar keywords (input class="q")
-                    await page.fill("input.q", keyword)
-                    # Rellenar ubicación (input class="l")
-                    await page.fill("input.l", "Nicaragua")
-                    # Enter en location o click en gosearch
-                    await page.press("input.l", "Enter")
+                    logger.info(f"[{self.site_name}] Navegando a resultados: {search_url}")
+                    # Usamos networkidle porque el sitio tiene carga dinámica
+                    response = await page.goto(search_url, wait_until="domcontentloaded", timeout=60000)
                     
-                    await page.wait_for_load_state("networkidle", timeout=60000)
+                    # Pequeña pausa para asegurar renderizado inicial
                     await asyncio.sleep(3)
-                    
-                    # Selector confirmado: .vacancy_card
-                    cards = await page.query_selector_all(".vacancy_card")
-                    logger.info(f"[{self.site_name}] Encontradas {len(cards)} tarjetas .vacancy_card")
-                    
-                    if not cards:
-                        # Fallback a buscar h2 si .vacancy_card no aparece
-                        cards = await page.query_selector_all("h2")
 
+                    # Si el servidor responde con error o no carga el buscador, intentar vía el formulario del Home
+                    if not response or response.status >= 400:
+                        logger.warning(f"[{self.site_name}] Búsqueda directa falló (Status {response.status if response else 'N/A'}). Intentando vía Home...")
+                        await page.goto(self.base_url, wait_until="networkidle", timeout=60000)
+                        await page.wait_for_selector("input.q", timeout=20000)
+                        await page.fill("input.q", keyword)
+                        await page.fill("input.l", "Nicaragua")
+                        await page.press("input.l", "Enter")
+                        await page.wait_for_load_state("networkidle", timeout=60000)
+                    
+                    # Esperamos hasta 15s a que aparezca al menos una tarjeta o el mensaje de 'no hay resultados'
+                    try:
+                        await page.wait_for_selector(".vacancy_card", timeout=15000)
+                    except:
+                        pass # Quizás no hay resultados o usa el fallback h2
+
+                    cards = await page.query_selector_all(".vacancy_card")
+                    if not cards:
+                        cards = await page.query_selector_all("h2")
+                    
+                    logger.info(f"[{self.site_name}] Encontradas {len(cards)} posibles ofertas.")
+                    
                     for card in cards:
                         try:
                             # 1. Título y URL
@@ -95,17 +107,15 @@ class AcciontrabajoScraper(BaseScraper):
                                 'requires_manual': False
                             })
                         except Exception as e:
-                            logger.error(f"Error procesando tarjeta en {self.site_name}: {e}")
                             continue
 
                 except Exception as e:
-                    logger.error(f"Error escaneando {keyword} en {self.site_name}: {e}")
+                    logger.error(f"[{self.site_name}] Error escaneando keyword '{keyword}': {e}")
                     continue
 
         finally:
             await browser.close()
 
         unique_jobs = {j['url']: j for j in all_jobs if j.get('url')}.values()
-        logger.info(f"[{self.site_name}] Total únicas encontradas: {len(unique_jobs)}")
+        logger.info(f"[{self.site_name}] Total final: {len(unique_jobs)} ofertas.")
         return list(unique_jobs)
-
