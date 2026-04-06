@@ -213,9 +213,9 @@
             Activa o desactiva portales y dispara escaneos manuales específicos para este candidato.
             También puedes reintentar postulaciones rechazadas.
         </p>
-        <div class="site-toggle-grid">
+    <div class="site-toggle-grid" id="portal-grid">
             {% for site in site_configs %}
-            <div class="site-toggle-item">
+            <div class="site-toggle-item" id="portal-card-{{ site.site_name }}">
                 <span class="site-name"><span class="site-badge badge-{{ site.site_name|lower }}">{{ site.site_name | capitalize }}</span></span>
                 <div class="site-actions">
                     <form action="/settings/toggle-site/{{ site.site_name }}" method="post">
@@ -228,6 +228,15 @@
                             🔍 Escanear
                         </button>
                     </form>
+                    <!-- Botón Detener (visible solo cuando este portal está activo) -->
+                    <button
+                        id="stop-btn-{{ site.site_name }}"
+                        class="btn-stop"
+                        style="display:none"
+                        onclick="stopSite('{{ site.site_name }}')"
+                        title="Detener proceso y borrar plazas pendientes">
+                        ⏹ Detener
+                    </button>
                 </div>
                 <!-- Reintentar rechazados de este portal para este candidato -->
                 <form method="post" action="/reintentar-rechazados" style="margin-top:.5rem;width:100%">
@@ -334,6 +343,58 @@ function togglePwd(id) {
     const inp = document.getElementById(id);
     inp.type = inp.type === 'password' ? 'text' : 'password';
 }
+
+// ─── Detener portal en curso ────────────────────────────────────
+async function stopSite(siteName) {
+    const btn = document.getElementById('stop-btn-' + siteName);
+    if (!btn) return;
+    if (!confirm('¿Detener el proceso de ' + siteName + ' y borrar las plazas pendientes (status=new)?')) return;
+    btn.disabled = true;
+    btn.textContent = '⏳ Deteniendo...';
+    try {
+        const res = await fetch('/settings/stop-site/' + siteName, { method: 'POST' });
+        const json = await res.json();
+        if (json.ok) {
+            btn.textContent = '✅ Señal enviada';
+            setTimeout(() => { btn.style.display = 'none'; btn.disabled = false; btn.textContent = '⏹ Detener'; }, 3000);
+        } else {
+            btn.textContent = '⏹ Detener';
+            btn.disabled = false;
+        }
+    } catch (e) {
+        btn.textContent = '⏹ Detener';
+        btn.disabled = false;
+    }
+}
+
+// ─── Polling de estado para mostrar/ocultar botón Detener ───────
+(function initStatusPolling() {
+    async function checkStatus() {
+        try {
+            const res = await fetch('/api/status');
+            if (!res.ok) return;
+            const data = await res.json();
+
+            // Ocultar todos los botones de stop primero
+            document.querySelectorAll('[id^="stop-btn-"]').forEach(b => b.style.display = 'none');
+
+            if (data.is_running || data.lock_acquired) {
+                const active = data.active_site;
+                if (active) {
+                    const btn = document.getElementById('stop-btn-' + active);
+                    if (btn) btn.style.display = 'inline-flex';
+                }
+                // Si hay cancelaciones pendientes, mostrar en esos también
+                (data.cancel_pending || []).forEach(site => {
+                    const btn = document.getElementById('stop-btn-' + site);
+                    if (btn) { btn.style.display = 'inline-flex'; btn.textContent = '⏳ Cancelando...'; }
+                });
+            }
+        } catch (_) {}
+    }
+    setInterval(checkStatus, 3000);
+    checkStatus(); // primera vez inmediata
+})();
 
 // ─── Modal CV ─────────────────────────────────────────────────
 let extractedCvData = null;

@@ -31,6 +31,30 @@ logger = logging.getLogger(__name__)
 _cycle_lock = asyncio.Lock()
 _is_running  = False
 
+# ── Control de cancelación por portal ────────────────────────────
+# Contiene los site_name que deben detenerse al próximo checkpoint.
+_cancel_requested: set[str] = set()
+# Registra qué portal se está procesando en este momento.
+_active_site: str | None = None
+
+
+def cancel_site_scan(site_name: str) -> None:
+    """Agrega un portal al set de cancelación.
+    El scraper/poster lo detectará en el próximo checkpoint y se detendrá.
+    """
+    _cancel_requested.add(site_name)
+    logger.info(f"[scheduler] ⏹ Cancelación solicitada para '{site_name}'")
+
+
+def get_running_status() -> dict:
+    """Retorna el estado actual del ciclo para la API de status."""
+    return {
+        "is_running": _is_running,
+        "active_site": _active_site,
+        "cancel_pending": list(_cancel_requested),
+        "lock_acquired": _cycle_lock.locked(),
+    }
+
 SCRAPER_CLASSES = {
     # Portales operativos
     'tecoloco':     TecolocoScraper,
@@ -118,7 +142,8 @@ async def run_single_site_scan(site_name: str, profile_id: int = None):
 
 async def _scan_profile_sites(profile: dict, site_filter: str = None):
     """Escanea los sitios activos para un candidato específico."""
-    profile_id = profile['id']
+    global _active_site
+    profile_id   = profile['id']
     profile_name = profile['name']
 
     # Consultar sitios habilitados globalmente
@@ -136,15 +161,34 @@ async def _scan_profile_sites(profile: dict, site_filter: str = None):
         for site_name, scraper_cls in SCRAPER_CLASSES.items():
             if site_name not in active_sites:
                 continue
+
+            # ── Checkpoint de cancelación ────────────────────────────
+            if site_name in _cancel_requested:
+                _cancel_requested.discard(site_name)
+                logger.info(f"[{site_name}] ⏹ Detenido por solicitud de cancelación (antes de escanear)")
+                await _delete_new_jobs(site_name)
+                continue
+
+            _active_site = site_name
             scraper = scraper_cls(profile_id=profile_id)
             try:
                 jobs = await scraper.scrape(p)
+
+                # Verificar cancelación después del scrape (antes de guardar)
+                if site_name in _cancel_requested:
+                    _cancel_requested.discard(site_name)
+                    logger.info(f"[{site_name}] ⏹ Detenido tras escaneo — descartando {len(jobs)} ofertas")
+                    await _delete_new_jobs(site_name)
+                    continue
+
                 new_count = await scraper.save_jobs(jobs)
                 await scraper.log_scan(len(jobs))
                 logger.info(f"[{site_name}][{profile_name}] {new_count} nuevas ofertas.")
             except Exception as e:
                 logger.error(f"Error scraper {site_name} / {profile_name}: {e}")
                 await scraper.log_scan(0, str(e))
+            finally:
+                _active_site = None
 
 async def run_scan_cycle():
     """Ejecuta un ciclo completo de escaneo y postulación para TODOS los candidatos activos."""
@@ -219,47 +263,69 @@ async def _do_scan_cycle():
 
             # Tecoloco
             if 'tecoloco' in jobs_by_site:
-                creds = await get_profile_credentials(profile_id, 'tecoloco')
-                tecoloco_poster = TecolocoPoster()
-                async with async_playwright() as p:
-                    browser, context = await tecoloco_poster.get_browser_context(p)
-                    page = await context.new_page()
-                    try:
-                        for job in jobs_by_site['tecoloco']:
-                            try:
-                                result = await tecoloco_poster.apply(page, job['url'], creds, job_db_id=job['id'])
-                                success, error_msg = result if isinstance(result, tuple) else (result, None)
-                                await tecoloco_poster.mark_applied(job['id'], success, error_msg)
-                                if success:
-                                    applied_successfully.append(dict(job))
-                                await asyncio.sleep(random.uniform(3, 6))
-                            except Exception as e:
-                                logger.error(f"Error tecoloco [{profile_name}] id={job['id']}: {e}")
-                                await tecoloco_poster.mark_applied(job['id'], False, str(e))
-                    finally:
-                        await browser.close()
+                # Checkpoint: cancelación antes de empezar el lote
+                if 'tecoloco' in _cancel_requested:
+                    _cancel_requested.discard('tecoloco')
+                    logger.info("[tecoloco] ⏹ Postulaciones canceladas por solicitud")
+                    await _delete_new_jobs('tecoloco')
+                else:
+                    creds = await get_profile_credentials(profile_id, 'tecoloco')
+                    tecoloco_poster = TecolocoPoster()
+                    async with async_playwright() as p:
+                        browser, context = await tecoloco_poster.get_browser_context(p)
+                        page = await context.new_page()
+                        try:
+                            for job in jobs_by_site['tecoloco']:
+                                # Checkpoint entre jobs
+                                if 'tecoloco' in _cancel_requested:
+                                    _cancel_requested.discard('tecoloco')
+                                    logger.info(f"[tecoloco] ⏹ Postulaciones interrumpidas (job id={job['id']})")
+                                    await _delete_new_jobs('tecoloco')
+                                    break
+                                try:
+                                    result = await tecoloco_poster.apply(page, job['url'], creds, job_db_id=job['id'])
+                                    success, error_msg = result if isinstance(result, tuple) else (result, None)
+                                    await tecoloco_poster.mark_applied(job['id'], success, error_msg)
+                                    if success:
+                                        applied_successfully.append(dict(job))
+                                    await asyncio.sleep(random.uniform(3, 6))
+                                except Exception as e:
+                                    logger.error(f"Error tecoloco [{profile_name}] id={job['id']}: {e}")
+                                    await tecoloco_poster.mark_applied(job['id'], False, str(e))
+                        finally:
+                            await browser.close()
 
             # Computrabajo (browser persistente con sesión, igual que Tecoloco)
             if 'computrabajo' in jobs_by_site:
-                creds = await get_profile_credentials(profile_id, 'computrabajo')
-                ct_poster = ComputrabajoPoster()
-                async with async_playwright() as p:
-                    browser, context = await ct_poster.get_browser_context(p)
-                    page = await context.new_page()
-                    try:
-                        for job in jobs_by_site['computrabajo']:
-                            try:
-                                result = await ct_poster.apply(page, job['url'], creds, job_db_id=job['id'])
-                                success, error_msg = result if isinstance(result, tuple) else (result, None)
-                                await ct_poster.mark_applied(job['id'], success, error_msg)
-                                if success:
-                                    applied_successfully.append(dict(job))
-                                await asyncio.sleep(random.uniform(3, 6))
-                            except Exception as e:
-                                logger.error(f"Error computrabajo [{profile_name}] id={job['id']}: {e}")
-                                await ct_poster.mark_applied(job['id'], False, str(e))
-                    finally:
-                        await browser.close()
+                if 'computrabajo' in _cancel_requested:
+                    _cancel_requested.discard('computrabajo')
+                    logger.info("[computrabajo] ⏹ Postulaciones canceladas por solicitud")
+                    await _delete_new_jobs('computrabajo')
+                else:
+                    creds = await get_profile_credentials(profile_id, 'computrabajo')
+                    ct_poster = ComputrabajoPoster()
+                    async with async_playwright() as p:
+                        browser, context = await ct_poster.get_browser_context(p)
+                        page = await context.new_page()
+                        try:
+                            for job in jobs_by_site['computrabajo']:
+                                if 'computrabajo' in _cancel_requested:
+                                    _cancel_requested.discard('computrabajo')
+                                    logger.info(f"[computrabajo] ⏹ Postulaciones interrumpidas (job id={job['id']})")
+                                    await _delete_new_jobs('computrabajo')
+                                    break
+                                try:
+                                    result = await ct_poster.apply(page, job['url'], creds, job_db_id=job['id'])
+                                    success, error_msg = result if isinstance(result, tuple) else (result, None)
+                                    await ct_poster.mark_applied(job['id'], success, error_msg)
+                                    if success:
+                                        applied_successfully.append(dict(job))
+                                    await asyncio.sleep(random.uniform(3, 6))
+                                except Exception as e:
+                                    logger.error(f"Error computrabajo [{profile_name}] id={job['id']}: {e}")
+                                    await ct_poster.mark_applied(job['id'], False, str(e))
+                        finally:
+                            await browser.close()
 
             # Otros portales (opcionempleo, acciontrabajo)
             other_posters = {
@@ -269,12 +335,22 @@ async def _do_scan_cycle():
             for site, poster in other_posters.items():
                 if site not in jobs_by_site:
                     continue
+                if site in _cancel_requested:
+                    _cancel_requested.discard(site)
+                    logger.info(f"[{site}] ⏹ Postulaciones canceladas por solicitud")
+                    await _delete_new_jobs(site)
+                    continue
                 creds = await get_profile_credentials(profile_id, site)
                 if not creds.get('email'):
                     logger.warning(f"Sin credenciales para {site} / {profile_name}. Saltando.")
                     continue
                 async with async_playwright() as p:
                     for job in jobs_by_site[site]:
+                        if site in _cancel_requested:
+                            _cancel_requested.discard(site)
+                            logger.info(f"[{site}] ⏹ Postulaciones interrumpidas")
+                            await _delete_new_jobs(site)
+                            break
                         browser, context = await poster.get_browser_context(p)
                         page = await context.new_page()
                         try:
@@ -288,6 +364,7 @@ async def _do_scan_cycle():
                             await poster.mark_applied(job['id'], False, str(e))
                         finally:
                             await browser.close()
+
 
         all_applied_by_profile[profile_id] = applied_successfully
         all_manual_by_profile[profile_id] = manual_jobs
@@ -304,6 +381,22 @@ async def _do_scan_cycle():
 
     now_managua = datetime.now() - timedelta(hours=6)
     logger.info(f"--- Fin de ciclo automático: {now_managua} ---")
+
+async def _delete_new_jobs(site_name: str) -> int:
+    """
+    Borra los jobs con status='new' del portal indicado.
+    Se llama cuando el usuario detiene un portal en curso.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        result = await db.execute(
+            "DELETE FROM jobs WHERE status = 'new' AND site = ?", (site_name,)
+        )
+        deleted = result.rowcount
+        await db.commit()
+    if deleted:
+        logger.info(f"[{site_name}] ⏹ {deleted} jobs 'new' eliminados tras cancelación")
+    return deleted
+
 
 def start_scheduler():
     scheduler = AsyncIOScheduler()

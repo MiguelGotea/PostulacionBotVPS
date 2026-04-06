@@ -11,7 +11,7 @@ from fastapi.templating import Jinja2Templates
 from datetime import datetime
 
 from config import DB_PATH, DASHBOARD_PORT, API_KEY_GEMINI, GEMINI_MODEL
-from scheduler import run_single_site_scan
+from scheduler import run_single_site_scan, cancel_site_scan, get_running_status
 
 logger = logging.getLogger(__name__)
 
@@ -132,6 +132,23 @@ async def scan_site(site_name: str, profile_id: int, background_tasks: Backgroun
     """Dispara un escaneo manual de un portal para un candidato en segundo plano."""
     background_tasks.add_task(run_single_site_scan, site_name, profile_id)
     return RedirectResponse(url=f"/profile?pid={profile_id}&msg=Escaneo+de+{site_name}+iniciado", status_code=303)
+
+
+@app.post("/settings/stop-site/{site_name}")
+async def stop_site(site_name: str):
+    """
+    Solicita la detención inmediata del portal indicado.
+    El scheduler lo detectará en el próximo checkpoint y detendrá el escaneo/postulación,
+    borrando los jobs con status='new' de ese portal.
+    """
+    cancel_site_scan(site_name)
+    return JSONResponse({"ok": True, "site": site_name, "msg": f"Detención solicitada para {site_name}"})
+
+
+@app.get("/api/status")
+async def api_status():
+    """Retorna el estado actual del ciclo de scraping/posting."""
+    return JSONResponse(get_running_status())
 
 @app.post("/settings/toggle-site/{site_name}")
 async def toggle_site(site_name: str):
