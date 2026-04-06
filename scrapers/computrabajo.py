@@ -51,58 +51,49 @@ class ComputrabajoScraper(BaseScraper):
 
     async def get_browser_context(self, playwright):
         """
-        Override del base: lanza Chromium con flags anti-bot para evitar
-        el 403 de Cloudflare que bloquea browsers headless detectados.
+        Override del base: usa Firefox headless para evadir el bloqueo 403
+        de Cloudflare. Firefox tiene un TLS fingerprint diferente a Chromium
+        y es detectado con menor frecuencia como bot.
         """
-        browser = await playwright.chromium.launch(
+        browser = await playwright.firefox.launch(
             headless=True,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-                "--disable-setuid-sandbox",
-                "--window-size=1366,768",
-                "--disable-extensions",
-                "--disable-plugins",
-                "--disable-images",          # acelera la carga
-            ]
+            firefox_user_prefs={
+                "general.useragent.override": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) "
+                    "Gecko/20100101 Firefox/124.0"
+                ),
+                "intl.accept_languages": "es-NI, es, en-US, en",
+                "dom.webdriver.enabled": False,           # oculta webdriver
+                "useAutomationExtension": False,
+                "permissions.default.image": 2,          # no cargar imágenes → más rápido
+            }
         )
         context = await browser.new_context(
             user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/123.0.0.0 Safari/537.36"
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) "
+                "Gecko/20100101 Firefox/124.0"
             ),
             viewport={"width": 1366, "height": 768},
             locale="es-NI",
             timezone_id="America/Managua",
             extra_http_headers={
-                "Accept-Language": "es-NI,es;q=0.9,en;q=0.8",
+                "Accept-Language": "es-NI,es;q=0.9,en-US;q=0.8,en;q=0.7",
                 "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                "sec-ch-ua": '"Chromium";v="123", "Not:A-Brand";v="8"',
-                "sec-ch-ua-mobile": "?0",
-                "sec-ch-ua-platform": '"Windows"',
+                "DNT": "1",
             }
         )
-        # Inyectar script de evasión en CADA página antes de que cargue
+        # Init script: eliminar huella de automatización
         await context.add_init_script("""
-            // Eliminar la huella de Playwright/CDP
             Object.defineProperty(navigator, 'webdriver', {
                 get: () => undefined,
                 configurable: true
             });
-            // Sobreescribir plugins para parecer un browser real
             Object.defineProperty(navigator, 'plugins', {
                 get: () => [1, 2, 3, 4, 5],
             });
             Object.defineProperty(navigator, 'languages', {
-                get: () => ['es-NI', 'es', 'en'],
+                get: () => ['es-NI', 'es', 'en-US', 'en'],
             });
-            // Eliminar CDP runtime fingerprint
-            delete window.cdc_adoQpoasnfa76pfcZLmcfl_Array;
-            delete window.cdc_adoQpoasnfa76pfcZLmcfl_Promise;
-            delete window.cdc_adoQpoasnfa76pfcZLmcfl_Symbol;
         """)
         return browser, context
 
