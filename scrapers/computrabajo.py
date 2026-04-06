@@ -46,6 +46,10 @@ _HEADERS = {
     "DNT": "1",
 }
 
+# Proxy Tor (SOCKS5) para evadir bloqueo de IP de datacenter en Cloudflare
+# Tor debe estar corriendo en el VPS: apt install tor && systemctl start tor
+TOR_PROXY = "socks5://127.0.0.1:9050"
+
 
 def _to_slug(keyword: str) -> str:
     """
@@ -106,8 +110,8 @@ class ComputrabajoScraper(BaseScraper):
 
     async def _scrape_keyword_http(self, session, BeautifulSoup, keyword: str) -> list[dict]:
         """
-        Descarga páginas de resultados via HTTP con curl_cffi
-        (impersonando Chrome TLS) y parsea con BeautifulSoup.
+        Descarga páginas de resultados via HTTP con curl_cffi + Tor proxy
+        para evadir el bloqueo de IP de datacenter en Cloudflare.
         """
         slug     = _to_slug(keyword)
         jobs     = []
@@ -121,20 +125,33 @@ class ComputrabajoScraper(BaseScraper):
 
             logger.info(f"[{self.site_name}] '{keyword}' pág.{page_num} → {url}")
 
-            try:
-                resp = await session.get(
-                    url,
-                    headers=_HEADERS,
-                    impersonate="chrome120",   # TLS fingerprint de Chrome 120
-                    timeout=30,
-                    allow_redirects=True,
-                )
-            except Exception as e:
-                logger.error(f"[{self.site_name}] Error HTTP '{keyword}' pág.{page_num}: {e}")
+            resp = None
+            # Intentar primero con Tor, luego directo si Tor no está disponible
+            for proxy in (TOR_PROXY, None):
+                try:
+                    kwargs = dict(
+                        headers=_HEADERS,
+                        impersonate="chrome120",
+                        timeout=30,
+                        allow_redirects=True,
+                    )
+                    if proxy:
+                        kwargs["proxies"] = {"http": proxy, "https": proxy}
+                        logger.debug(f"[{self.site_name}] Usando Tor proxy")
+                    resp = await session.get(url, **kwargs)
+                    break
+                except Exception as e:
+                    if proxy:
+                        logger.warning(f"[{self.site_name}] Tor no disponible ({e}), probando sin proxy")
+                    else:
+                        logger.error(f"[{self.site_name}] Error HTTP '{keyword}' pág.{page_num}: {e}")
+                    resp = None
+
+            if resp is None:
                 break
 
             if resp.status_code == 403:
-                logger.warning(f"[{self.site_name}] 403 Forbidden en '{keyword}' pág.{page_num}")
+                logger.warning(f"[{self.site_name}] 403 Forbidden en '{keyword}' pág.{page_num} (IP bloqueada por Cloudflare)")
                 break
             if resp.status_code != 200:
                 logger.warning(f"[{self.site_name}] HTTP {resp.status_code} en '{keyword}' pág.{page_num}")

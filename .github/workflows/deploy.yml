@@ -33,6 +33,14 @@ jobs:
             venv/bin/python3 -m playwright install chromium firefox
           fi
           
+          # Asegurar que Tor esté instalado y corriendo (proxy para Cloudflare bypass)
+          if ! command -v tor &> /dev/null; then
+            echo "🧅 Instalando Tor..."
+            apt-get install -y tor
+          fi
+          systemctl enable tor
+          systemctl start tor || true
+          
           echo "🔄 Reiniciando servicio PM2..."
           pm2 restart postulacion-bot || pm2 start ecosystem.config.js
           
