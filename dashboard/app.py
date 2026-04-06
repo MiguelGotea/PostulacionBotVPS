@@ -397,7 +397,6 @@ async def update_profile(
     salary_expectation: str = Form(""),
     availability: str = Form(""),
     about: str = Form(""),
-    applied_sites: str = Form("all"),
     is_active: int = Form(1),
     notification_email: str = Form(""),
 ):
@@ -407,12 +406,12 @@ async def update_profile(
             UPDATE candidate_profiles SET
                 name=?, phone=?, location=?, birth_date=?, civil_status=?, address=?,
                 education=?, experience=?, skills=?, languages=?,
-                salary_expectation=?, availability=?, about=?, applied_sites=?, is_active=?,
+                salary_expectation=?, availability=?, about=?, is_active=?,
                 notification_email=?
             WHERE id=?
         """, (name, phone, location, birth_date, civil_status, address,
               education, experience, skills, languages,
-              salary_expectation, availability, about, applied_sites, is_active,
+              salary_expectation, availability, about, is_active,
               notification_email, profile_id))
         await db.commit()
     return RedirectResponse(url=f"/profile?pid={profile_id}&msg=Perfil+actualizado", status_code=303)

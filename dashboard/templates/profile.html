@@ -60,7 +60,6 @@
             {% else %}
                 <span class="status-badge status-failed">Inactivo</span>
             {% endif %}
-            <span class="site-badge badge-tecoloco">{{ active_profile.applied_sites }}</span>
             <!-- Botón subir CV -->
             <button type="button" class="btn btn-cv-upload" id="btnOpenCvModal" onclick="openCvModal()">
                 📄 Subir CV (IA)
@@ -129,14 +128,6 @@
                     <input class="form-input" type="email" name="notification_email" id="field-notification_email"
                            value="{{ active_profile.notification_email or '' }}"
                            placeholder="correo@ejemplo.com">
-                </div>
-                <div class="form-group">
-                    <label>Sitios donde aplica</label>
-                    <select class="form-input" name="applied_sites">
-                        <option value="all" {% if active_profile.applied_sites == 'all' %}selected{% endif %}>Todos los portales</option>
-                        <option value="tecoloco" {% if active_profile.applied_sites == 'tecoloco' %}selected{% endif %}>Solo Tecoloco</option>
-                        <option value="computrabajo" {% if active_profile.applied_sites == 'computrabajo' %}selected{% endif %}>Solo Computrabajo</option>
-                    </select>
                 </div>
             </div>
 
