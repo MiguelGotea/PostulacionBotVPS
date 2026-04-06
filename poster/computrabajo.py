@@ -27,7 +27,10 @@ from config import PLAYWRIGHT_TIMEOUT, DB_PATH
 logger = logging.getLogger(__name__)
 
 BASE_URL  = "https://ni.computrabajo.com"
-LOGIN_URL = "https://secure.computrabajo.com/Account/Login"
+# El login usa OAuth/PKCE con parámetros dinámicos por sesión.
+# No se puede navegar directamente a la URL de login — hay que hacer el
+# flujo real: Home → click "Login" (nav) → click "Ingresar"
+LOGIN_ENTRY_URL = "https://ni.computrabajo.com"
 
 # Departamentos de Nicaragua para regex
 _DEPTS_REGEX = (
@@ -144,9 +147,9 @@ class ComputrabajoPoster(BasePoster):
 
     async def login(self, page, credentials) -> bool:
         """
-        Login de 2 pasos en Computrabajo:
-          Paso 1: ingresar email → click Continuar
-          Paso 2: ingresar contraseña → click Iniciar sesión
+        Login de 2 pasos en Computrabajo.
+        Flujo: Homepage → click "Login" (nav) → click "Ingresar" → email → Continuar → password → Iniciar
+        La URL de login tiene parámetros OAuth dinámicos, no se puede navegar directamente.
         """
         email    = credentials.get("email", "")
         password = credentials.get("password", "")
@@ -156,9 +159,46 @@ class ComputrabajoPoster(BasePoster):
             return False
 
         try:
-            logger.info(f"[{self.site_name}] Login → {LOGIN_URL}")
-            await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
-            await asyncio.sleep(random.uniform(1.5, 2.5))
+            # ── Paso 0: navegar desde el homepage ──────────────────────
+            logger.info(f"[{self.site_name}] Login via homepage → {LOGIN_ENTRY_URL}")
+            await page.goto(LOGIN_ENTRY_URL, wait_until="domcontentloaded", timeout=60000)
+            await asyncio.sleep(random.uniform(2, 3))
+
+            # Click en botón "Login" del nav (abre dropdown)
+            login_nav = await page.query_selector(
+                "a[href*='login'], button:has-text('Login'), "
+                "a:has-text('Login'), li.login, .js-login-btn"
+            )
+            if login_nav:
+                await login_nav.click()
+                await asyncio.sleep(random.uniform(0.8, 1.5))
+
+            # Click en "Ingresar" dentro del dropdown
+            ingresar = await page.query_selector(
+                "a:has-text('Ingresar'), button:has-text('Ingresar'), "
+                "a.js-candidatos-login"
+            )
+            if ingresar:
+                await ingresar.click()
+                await asyncio.sleep(random.uniform(2, 3))
+            else:
+                # Fallback: buscar enlace directo de login
+                direct = await page.query_selector("a[href*='Account/Login']")
+                if direct:
+                    await direct.click()
+                    await asyncio.sleep(random.uniform(2, 3))
+
+            # Esperar formulario de login
+            try:
+                await page.wait_for_selector(
+                    "input#Email, input[name='Email'], input[type='email']",
+                    timeout=15000
+                )
+            except Exception:
+                logger.error(f"[{self.site_name}] Página de login no cargó. URL: {page.url[:80]}")
+                return False
+
+            await asyncio.sleep(random.uniform(0.5, 1.0))
 
             # ── Paso 1: email ─────────────────────────────────────────
             email_input = await page.query_selector(

@@ -24,8 +24,10 @@ from config import PLAYWRIGHT_TIMEOUT, DB_PATH
 logger = logging.getLogger(__name__)
 
 BASE_URL              = "https://ni.computrabajo.com"
-LOGIN_URL             = "https://ni.computrabajo.com/candidato/login"
-LOGIN_URL_ALT         = "https://secure.computrabajo.com/Account/Login"
+# La página de login usa OAuth/PKCE con parámetros dinámicos.
+# No se puede navegar directamente, hay que llegar desde el home:
+# Home → click "Login" → click "Ingresar"
+LOGIN_ENTRY_URL       = "https://ni.computrabajo.com"   # punto de entrada
 MAX_PAGES_PER_KEYWORD = 5   # ~100 resultados máx por keyword (20 × 5)
 
 # User-Agent que impersonará curl_cffi
