@@ -27,10 +27,10 @@ from config import PLAYWRIGHT_TIMEOUT, DB_PATH
 logger = logging.getLogger(__name__)
 
 BASE_URL  = "https://ni.computrabajo.com"
-# El login usa OAuth/PKCE con parámetros dinámicos por sesión.
-# No se puede navegar directamente a la URL de login — hay que hacer el
-# flujo real: Home → click "Login" (nav) → click "Ingresar"
-LOGIN_ENTRY_URL = "https://ni.computrabajo.com"
+# El subdominio de candidatos redirige automáticamente al OAuth login
+# con los parámetros correctos (redirect_uri, client_id, etc.)
+# Evita tener que hacer el flujo click homepage → Login → Ingresar
+LOGIN_ENTRY_URL = "https://candidato.ni.computrabajo.com"
 
 # Departamentos de Nicaragua para regex
 _DEPTS_REGEX = (
@@ -159,45 +159,13 @@ class ComputrabajoPoster(BasePoster):
             return False
 
         try:
-            # ── Paso 0: navegar desde el homepage ──────────────────────
-            logger.info(f"[{self.site_name}] Login via homepage → {LOGIN_ENTRY_URL}")
+            # ── Paso 0: ir al subdominio de candidatos → redirige al login OAuth ──
+            logger.info(f"[{self.site_name}] Login → {LOGIN_ENTRY_URL}")
             await page.goto(LOGIN_ENTRY_URL, wait_until="domcontentloaded", timeout=60000)
+            # El subdominio redirige automáticamente a secure.computrabajo.com/Account/Login
+            # con los parámetros OAuth correctos — esperar que termine la redirección
             await asyncio.sleep(random.uniform(2, 3))
-            logger.info(f"[{self.site_name}] Homepage cargada. URL: {page.url[:80]}")
-
-            # Estrategia 1: extraer la URL de login del DOM sin clicks
-            # El botón "Ingresar" del dropdown tiene un href con Account/Login
-            login_href = await page.evaluate("""
-                () => {
-                    // Buscar cualquier link que apunte al login de candidatos
-                    const links = [...document.querySelectorAll('a')];
-                    const login = links.find(a =>
-                        a.href && (
-                            a.href.includes('Account/Login') ||
-                            a.href.includes('candidato') ||
-                            (a.innerText && a.innerText.trim() === 'Ingresar')
-                        )
-                    );
-                    return login ? login.href : null;
-                }
-            """)
-
-            if login_href:
-                logger.info(f"[{self.site_name}] Login URL extraída: {login_href[:80]}")
-                await page.goto(login_href, wait_until="domcontentloaded", timeout=60000)
-                await asyncio.sleep(random.uniform(2, 3))
-            else:
-                # Estrategia 2: click directo por texto visible
-                logger.warning(f"[{self.site_name}] No se encontró href de login, intentando click por texto")
-                try:
-                    await page.click("text=Login", timeout=5000)
-                    await asyncio.sleep(random.uniform(0.8, 1.5))
-                    await page.click("text=Ingresar", timeout=5000)
-                    await asyncio.sleep(random.uniform(2, 3))
-                except Exception as ce:
-                    logger.warning(f"[{self.site_name}] Click por texto falló: {ce}")
-
-            logger.info(f"[{self.site_name}] URL tras navegación login: {page.url[:80]}")
+            logger.info(f"[{self.site_name}] URL tras redirección: {page.url[:100]}")
 
             # Esperar formulario de login
             try:
@@ -206,6 +174,12 @@ class ComputrabajoPoster(BasePoster):
                     timeout=15000
                 )
             except Exception:
+                # Si redirigió a otro lugar (ya logueado o error), comprobarlo
+                url_actual = page.url.lower()
+                if "account/login" not in url_actual and "candidato/login" not in url_actual:
+                    logger.info(f"[{self.site_name}] Posible sesión activa: {page.url[:80]}")
+                    self._logged_in = True
+                    return True
                 logger.error(f"[{self.site_name}] Página de login no cargó. URL: {page.url[:80]}")
                 return False
 
