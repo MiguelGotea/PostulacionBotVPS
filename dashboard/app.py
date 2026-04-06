@@ -151,8 +151,10 @@ async def api_status():
     return JSONResponse(get_running_status())
 
 @app.post("/settings/toggle-site/{site_name}")
-async def toggle_site(site_name: str):
+async def toggle_site(site_name: str, request: Request):
     """Habilita o deshabilita un portal de empleo (global)."""
+    form = await request.form()
+    pid = form.get("pid", "")
     async with aiosqlite.connect(DB_PATH) as db:
         async with db.execute("SELECT is_enabled FROM site_configs WHERE site_name = ?", (site_name,)) as cursor:
             row = await cursor.fetchone()
@@ -160,7 +162,8 @@ async def toggle_site(site_name: str):
                 new_status = 0 if row[0] == 1 else 1
                 await db.execute("UPDATE site_configs SET is_enabled = ? WHERE site_name = ?", (new_status, site_name))
                 await db.commit()
-    return RedirectResponse(url="/profile", status_code=303)
+    redirect = f"/profile?pid={pid}&msg=Portal+{site_name}+actualizado" if pid else "/profile"
+    return RedirectResponse(url=redirect, status_code=303)
 
 
 # ──────────────────────────────────────────────────────────────────

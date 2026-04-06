@@ -1199,41 +1199,7 @@ body {
   white-space: nowrap;
 }
 
-/* ── Portals Grid ──────────────────────────────────────────── */
-.site-toggle-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(185px, 1fr));
-  gap: .75rem;
-  margin-top: 1rem;
-}
-
-.site-toggle-item {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: .5rem;
-  transition: var(--transition);
-}
-
-.site-toggle-item:hover {
-  box-shadow: var(--shadow-md);
-  border-color: var(--border-2);
-}
-
-.site-name {
-  font-weight: 600;
-}
-
-.site-actions {
-  display: flex;
-  gap: .4rem;
-  flex-wrap: wrap;
-  margin-top: .25rem;
-}
-
+/* ── Portal Toggle Button ──────────────────────────────────── */
 .toggle-btn {
   padding: .3rem .75rem;
   border: none;
@@ -1245,6 +1211,7 @@ body {
   background: #fff1f2;
   color: var(--rose);
   transition: var(--transition);
+  white-space: nowrap;
 }
 
 .toggle-btn.active {
@@ -1252,29 +1219,63 @@ body {
   color: #059669;
 }
 
-/* ── Credentials Grid ──────────────────────────────────────── */
-.credentials-grid {
+/* ── Unified Portals & Credentials Grid ────────────────────── */
+.portal-unified-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
   gap: .875rem;
   margin-top: .75rem;
 }
 
-.credential-card {
+.portal-unified-card {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
   transition: var(--transition);
 }
 
-.credential-card:hover {
+.portal-unified-card:hover {
   box-shadow: var(--shadow-md);
   border-color: var(--border-2);
 }
 
-.credential-header {
-  margin-bottom: .75rem;
+/* Header row: badge left, toggle right */
+.portal-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .5rem;
+}
+
+.portal-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: .75rem 0;
+}
+
+/* Credentials block inside the card */
+.portal-credentials {
+  flex: 1;
+}
+
+/* Actions row: scan + stop */
+.portal-card-actions {
+  display: flex;
+  gap: .4rem;
+  align-items: center;
+}
+
+/* Global actions bar (save + retry-all) */
+.portal-global-actions {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  margin-top: 1.25rem;
+  flex-wrap: wrap;
 }
 
 /* ── Settings Card ─────────────────────────────────────────── */
@@ -1523,8 +1524,17 @@ body {
     grid-template-columns: 1fr;
   }
 
-  .credentials-grid {
+  .portal-unified-grid {
     grid-template-columns: 1fr;
+  }
+
+  .portal-card-actions {
+    flex-direction: column;
+  }
+
+  .portal-global-actions {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .cv-preview-grid {
