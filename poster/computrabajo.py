@@ -190,8 +190,9 @@ class ComputrabajoPoster(BasePoster):
                 "input#Email, input[name='Email'], input[type='email']"
             )
             if not email_input:
-                logger.error(f"[{self.site_name}] Campo de email no encontrado")
+                logger.error(f"[{self.site_name}] ✗ Campo de email no encontrado. Título: '{await page.title()}'")
                 return False
+            logger.info(f"[{self.site_name}] ✓ Campo email encontrado. Llenando: {email[:20]}...")
             await email_input.fill(email)
             await asyncio.sleep(random.uniform(0.4, 0.8))
 
@@ -201,8 +202,10 @@ class ComputrabajoPoster(BasePoster):
                 "button[type='submit']"
             )
             if continue_btn:
+                logger.info(f"[{self.site_name}] ✓ Botón Continuar encontrado. Haciendo click...")
                 await continue_btn.click()
             else:
+                logger.warning(f"[{self.site_name}] ✗ Botón Continuar no encontrado. Usando Enter.")
                 await email_input.press("Enter")
 
             # Esperar a que aparezca el campo de contraseña
@@ -211,8 +214,10 @@ class ComputrabajoPoster(BasePoster):
                     "input#password, input[name='password'], input[type='password']",
                     timeout=15000
                 )
+                logger.info(f"[{self.site_name}] ✓ Campo de contraseña apareció")
             except Exception:
-                logger.warning(f"[{self.site_name}] Campo de password no apareció tras Continuar")
+                title = await page.title()
+                logger.warning(f"[{self.site_name}] ✗ Campo de password no apareció tras Continuar. Título: '{title}' URL: {page.url[:80]}")
                 return False
 
             await asyncio.sleep(random.uniform(0.5, 1.0))
@@ -222,8 +227,9 @@ class ComputrabajoPoster(BasePoster):
                 "input#password, input[name='password'], input[type='password']"
             )
             if not pwd_input:
-                logger.error(f"[{self.site_name}] Campo de contraseña no encontrado")
+                logger.error(f"[{self.site_name}] ✗ Campo de contraseña no encontrado tras wait")
                 return False
+            logger.info(f"[{self.site_name}] ✓ Llenando contraseña...")
             await pwd_input.fill(password)
             await asyncio.sleep(random.uniform(0.4, 0.8))
 
@@ -234,8 +240,10 @@ class ComputrabajoPoster(BasePoster):
                 "button[type='submit']"
             )
             if submit_btn:
+                logger.info(f"[{self.site_name}] ✓ Botón submit encontrado. Haciendo click...")
                 await submit_btn.click()
             else:
+                logger.warning(f"[{self.site_name}] ✗ Botón submit no encontrado. Usando Enter.")
                 await pwd_input.press("Enter")
 
             try:
@@ -245,12 +253,15 @@ class ComputrabajoPoster(BasePoster):
             await asyncio.sleep(random.uniform(2, 3))
 
             # ── Verificar éxito ───────────────────────────────────────
-            if "account/login" not in page.url.lower():
+            url_final = page.url.lower()
+            title_final = await page.title()
+            logger.info(f"[{self.site_name}] URL final login: {page.url[:100]} | Título: '{title_final}'")
+            if "account/login" not in url_final:
                 logger.info(f"[{self.site_name}] ✅ Login exitoso → {page.url[:60]}")
                 self._logged_in = True
                 return True
             else:
-                logger.error(f"[{self.site_name}] Login falló. URL: {page.url[:60]}")
+                logger.error(f"[{self.site_name}] ✗ Login falló — sigue en login. Título: '{title_final}'")
                 return False
 
         except Exception as e:
