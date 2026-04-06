@@ -1,8 +1,7 @@
-# 🤖 Katty Jobs — Sistema Automatizado de Búsqueda y Postulación de Empleos
+# 🤖 PostulacionBot — Sistema Automatizado de Búsqueda y Postulación de Empleos
 
 Sistema inteligente de automatización de búsqueda y postulación de ofertas laborales en portales de Nicaragua. Diseñado para correr 24/7 en un VPS de DigitalOcean con Ubuntu, gestionado con PM2, y con despliegue continuo via GitHub Actions.
 
-> **Candidata:** Katty Valentina Coleman  
 > **VPS:** `198.211.97.243:8765`  
 > **Repositorio:** `https://github.com/MiguelGotea/PostulacionBotVPS`
 
@@ -126,8 +125,8 @@ El sistema usa **SQLite** con 4 tablas:
 
 ```bash
 # 1. Clonar el repositorio
-git clone https://github.com/MiguelGotea/PostulacionBotVPS.git /root/katty-jobs
-cd /root/katty-jobs
+git clone https://github.com/MiguelGotea/PostulacionBotVPS.git /root/postulacion-bot
+cd /root/postulacion-bot
 
 # 2. Crear entorno virtual e instalar dependencias
 python3 -m venv venv
@@ -178,10 +177,10 @@ El proyecto usa **GitHub Actions** (`.github/workflows/deploy.yml`) para desplie
 pm2 status
 
 # Ver logs en tiempo real
-pm2 logs katty-jobs
+pm2 logs postulacion-bot
 
 # Reiniciar después de cambios manuales
-pm2 restart katty-jobs
+pm2 restart postulacion-bot
 
 # Ver el dashboard desde el servidor
 curl http://localhost:8765

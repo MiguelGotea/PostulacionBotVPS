@@ -1,10 +1,10 @@
 module.exports = {
   apps: [
     {
-      name: "katty-jobs",
-      script: "/root/katty-jobs/venv/bin/python3",
+      name: "postulacion-bot",
+      script: "/root/postulacion-bot/venv/bin/python3",
       args: "main.py",
-      cwd: "/root/katty-jobs",
+      cwd: "/root/postulacion-bot",
       interpreter: "none",
       watch: false,
       autorestart: true,
@@ -12,10 +12,10 @@ module.exports = {
       max_restarts: 10,
       env: {
         PYTHONUNBUFFERED: "1",
-        PYTHONPATH: "/root/katty-jobs"
+        PYTHONPATH: "/root/postulacion-bot"
       },
-      error_file: "/root/katty-jobs/logs/error.log",
-      out_file: "/root/katty-jobs/logs/output.log",
+      error_file: "/root/postulacion-bot/logs/error.log",
+      out_file: "/root/postulacion-bot/logs/output.log",
       log_date_format: "YYYY-MM-DD HH:mm:ss"
     }
   ]

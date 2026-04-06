@@ -32,13 +32,13 @@ async def lifespan(app: FastAPI):
     
     # 3. Iniciar el Scheduler en segundo plano
     scheduler = start_scheduler()
-    logger.info("Katty Jobs Scheduler iniciado.")
+    logger.info("PostulacionBot Scheduler iniciado.")
     
     yield
     
     # Shutdown
     scheduler.shutdown()
-    logger.info("Katty Jobs Scheduler detenido.")
+    logger.info("PostulacionBot Scheduler detenido.")
 
 # Crear la aplicación principal (FastAPI)
 # Usamos el dashboard_app montado o importado

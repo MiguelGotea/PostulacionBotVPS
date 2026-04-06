@@ -1,8 +1,8 @@
 # Auto-navegar a la raíz de PostulacionBotVPS
 Set-Location $PSScriptRoot
 
-# Script de Empuje Tanque v1.1 - Katty Jobs
-Write-Host "Iniciando proceso de envio para Katty Jobs..." -ForegroundColor Cyan
+# Script de Empuje Tanque v1.1 - PostulacionBot
+Write-Host "Iniciando proceso de envio para PostulacionBot..." -ForegroundColor Cyan
 
 # 1. Preparar commits
 git add .
