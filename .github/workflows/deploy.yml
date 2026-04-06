@@ -29,6 +29,8 @@ jobs:
             echo "📦 Actualizando dependencias en el venv..."
             source venv/bin/activate
             pip install -r requirements.txt
+            echo "🌐 Instalando navegadores de Playwright (chromium + firefox)..."
+            playwright install chromium firefox
           fi
           
           echo "🔄 Reiniciando servicio PM2..."
