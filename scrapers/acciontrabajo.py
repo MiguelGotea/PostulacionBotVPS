@@ -24,18 +24,25 @@ class AcciontrabajoScraper(BaseScraper):
                 return []
 
             for keyword in keywords:
-                # URL búsqueda: https://ni.acciontrabajo.com/buscar?q={keyword}&l=Nicaragua
-                q_encoded = urllib.parse.quote(keyword)
-                search_url = f"{self.base_url}buscar?q={q_encoded}&l=Nicaragua"
-                
-                logger.info(f"[{self.site_name}] Escaneando keyword: {keyword} -> {search_url}")
+                logger.info(f"[{self.site_name}] Escaneando keyword: {keyword}")
                 
                 try:
-                    await page.goto(search_url, wait_until="networkidle", timeout=60000)
-                    await asyncio.sleep(5)
+                    # Ir al home para usar el buscador real y evitar 404s en URLs directas
+                    await page.goto(self.base_url, wait_until="domcontentloaded", timeout=60000)
+                    await asyncio.sleep(2)
+                    
+                    # Rellenar keywords (input class="q")
+                    await page.fill("input.q", keyword)
+                    # Rellenar ubicación (input class="l")
+                    await page.fill("input.l", "Nicaragua")
+                    # Enter en location o click en gosearch
+                    await page.press("input.l", "Enter")
+                    
+                    await page.wait_for_load_state("networkidle", timeout=60000)
+                    await asyncio.sleep(3)
                     
                     # DEBUG: Screenshot
-                    debug_path = f"logs/debug_search_{keyword}.png"
+                    debug_path = f"logs/debug_search_{keyword.replace(' ', '_')}.png"
                     await page.screenshot(path=debug_path)
                     logger.info(f"[{self.site_name}] DEBUG: Screenshot guardada en {debug_path}")
 
@@ -44,13 +51,12 @@ class AcciontrabajoScraper(BaseScraper):
                     logger.info(f"[{self.site_name}] Encontradas {len(cards)} tarjetas .vacancy_card")
                     
                     if not cards:
-                        # Fallback a buscar h2 si .vacancy_card no aparece (renderizado distinto?)
+                        # Fallback a buscar h2 si .vacancy_card no aparece
                         cards = await page.query_selector_all("h2")
 
                     for card in cards:
                         try:
                             # 1. Título y URL
-                            # Si es .vacancy_card, el h2 está dentro
                             title_el = await card.query_selector("h2")
                             if not title_el and (await card.evaluate("el => el.tagName")) == "H2":
                                 title_el = card
@@ -62,7 +68,6 @@ class AcciontrabajoScraper(BaseScraper):
                             if not title or len(title) < 4:
                                 continue
 
-                            # Link: puede estar en el a que envuelve al h2 o ser el h2 si es fallback
                             link_el = await card.query_selector("a")
                             if not link_el and (await card.evaluate("el => el.tagName")) == "A":
                                 link_el = card
@@ -78,8 +83,6 @@ class AcciontrabajoScraper(BaseScraper):
                             location = "Nicaragua"
                             company = "Confidencial"
                             
-                            # La ubicación suele ser el primer div después del link del título
-                            # La empresa está en un <b>
                             company_el = await card.query_selector("b")
                             if company_el:
                                 company = (await company_el.inner_text()).strip()
