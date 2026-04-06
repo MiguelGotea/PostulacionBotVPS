@@ -76,7 +76,6 @@ class BasePoster(abc.ABC):
         """
         browser = await playwright.chromium.launch(
             headless=headless,
-            proxy={"server": "socks5://127.0.0.1:9050"},  # Tor proxy
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--no-first-run",

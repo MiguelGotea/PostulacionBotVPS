@@ -27,10 +27,10 @@ from config import PLAYWRIGHT_TIMEOUT, DB_PATH
 logger = logging.getLogger(__name__)
 
 BASE_URL  = "https://ni.computrabajo.com"
-# El subdominio de candidatos redirige automáticamente al OAuth login
-# con los parámetros correctos (redirect_uri, client_id, etc.)
-# Evita tener que hacer el flujo click homepage → Login → Ingresar
-LOGIN_ENTRY_URL = "https://candidato.ni.computrabajo.com"
+# Sin Tor: la IP del VPS sí puede acceder a secure.computrabajo.com directamente.
+# Tor solo era necesario para las páginas de búsqueda (ni.computrabajo.com/trabajo-de-X).
+# El login desde el VPS directo puede ir a la URL base del login OAuth.
+LOGIN_ENTRY_URL = "https://secure.computrabajo.com/Account/Login"
 
 # Departamentos de Nicaragua para regex
 _DEPTS_REGEX = (
