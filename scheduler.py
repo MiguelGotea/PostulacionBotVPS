@@ -239,9 +239,30 @@ async def _do_scan_cycle():
                     finally:
                         await browser.close()
 
-            # Otros portales
+            # Computrabajo (browser persistente con sesión, igual que Tecoloco)
+            if 'computrabajo' in jobs_by_site:
+                creds = await get_profile_credentials(profile_id, 'computrabajo')
+                ct_poster = ComputrabajoPoster()
+                async with async_playwright() as p:
+                    browser, context = await ct_poster.get_browser_context(p)
+                    page = await context.new_page()
+                    try:
+                        for job in jobs_by_site['computrabajo']:
+                            try:
+                                result = await ct_poster.apply(page, job['url'], creds, job_db_id=job['id'])
+                                success, error_msg = result if isinstance(result, tuple) else (result, None)
+                                await ct_poster.mark_applied(job['id'], success, error_msg)
+                                if success:
+                                    applied_successfully.append(dict(job))
+                                await asyncio.sleep(random.uniform(3, 6))
+                            except Exception as e:
+                                logger.error(f"Error computrabajo [{profile_name}] id={job['id']}: {e}")
+                                await ct_poster.mark_applied(job['id'], False, str(e))
+                    finally:
+                        await browser.close()
+
+            # Otros portales (opcionempleo, acciontrabajo)
             other_posters = {
-                'computrabajo': ComputrabajoPoster(),
                 'opcionempleo': OpcionempleoPoster(),
                 'acciontrabajo': AcciontrabajoPoster()
             }
