@@ -207,7 +207,9 @@ async def run_scan_cycle():
 
 async def _do_scan_cycle():
     """Lógica interna del ciclo multi-perfil."""
+    global _active_site
     now_managua = datetime.now() - timedelta(hours=6)
+
     logger.info(f"--- Iniciando ciclo automático: {now_managua} ---")
 
     profiles = await get_active_profiles()
@@ -269,6 +271,7 @@ async def _do_scan_cycle():
                     logger.info("[tecoloco] ⏹ Postulaciones canceladas por solicitud")
                     await _delete_new_jobs('tecoloco')
                 else:
+                    _active_site = 'tecoloco'
                     creds = await get_profile_credentials(profile_id, 'tecoloco')
                     tecoloco_poster = TecolocoPoster()
                     async with async_playwright() as p:
@@ -294,6 +297,7 @@ async def _do_scan_cycle():
                                     await tecoloco_poster.mark_applied(job['id'], False, str(e))
                         finally:
                             await browser.close()
+                            _active_site = None
 
             # Computrabajo (browser persistente con sesión, igual que Tecoloco)
             if 'computrabajo' in jobs_by_site:
@@ -302,6 +306,7 @@ async def _do_scan_cycle():
                     logger.info("[computrabajo] ⏹ Postulaciones canceladas por solicitud")
                     await _delete_new_jobs('computrabajo')
                 else:
+                    _active_site = 'computrabajo'
                     creds = await get_profile_credentials(profile_id, 'computrabajo')
                     ct_poster = ComputrabajoPoster()
                     async with async_playwright() as p:
@@ -326,6 +331,7 @@ async def _do_scan_cycle():
                                     await ct_poster.mark_applied(job['id'], False, str(e))
                         finally:
                             await browser.close()
+                            _active_site = None
 
             # Otros portales (opcionempleo, acciontrabajo)
             other_posters = {
