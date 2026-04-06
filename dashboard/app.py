@@ -317,6 +317,7 @@ async def force_apply_job(job_id: int, background_tasks: BackgroundTasks):
 async def _run_force_apply(job: dict):
     from playwright.async_api import async_playwright
     from poster.tecoloco import TecolocoPoster
+    from poster.computrabajo import ComputrabajoPoster
     import re
 
     already_applied = (job.get("status") == "applied")
@@ -324,26 +325,33 @@ async def _run_force_apply(job: dict):
     job_id = job["id"]
     profile_id = job.get("profile_id", 1)
 
-    if site != "tecoloco":
+    # Seleccionar el poster correcto según el sitio
+    if site == "tecoloco":
+        poster = TecolocoPoster()
+        site_name_db = "tecoloco"
+    elif site == "computrabajo":
+        poster = ComputrabajoPoster()
+        site_name_db = "computrabajo"
+    else:
         logger.warning(f"[force-apply] Sitio '{site}' no soportado aún.")
         return
 
-    poster = TecolocoPoster()
-    # Obtener credenciales del perfil correspondiente
-    creds = await poster.get_credentials_from_db(profile_id, 'tecoloco')
+    creds = await poster.get_credentials_from_db(profile_id, site_name_db)
 
     async with async_playwright() as p:
         browser, context = await poster.get_browser_context(p)
         page = await context.new_page()
         try:
-            if poster._session_cookies:
+            if hasattr(poster, "_session_cookies") and poster._session_cookies:
                 await page.context.add_cookies(poster._session_cookies)
 
             if already_applied:
                 await page.goto(job["url"], wait_until="domcontentloaded", timeout=60000)
                 await asyncio.sleep(random.uniform(1.5, 2.5))
-                await poster._update_company_from_page(page, job_id)
-                await poster._read_location_from_page(page, job_id)
+                if hasattr(poster, "_update_company_from_page"):
+                    await poster._update_company_from_page(page, job_id)
+                if hasattr(poster, "_read_location_from_page"):
+                    await poster._read_location_from_page(page, job_id)
             else:
                 result = await poster.apply(page, job["url"], creds, job_db_id=job_id)
                 success, error_msg = result if isinstance(result, tuple) else (result, None)
