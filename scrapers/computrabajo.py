@@ -24,7 +24,8 @@ from config import PLAYWRIGHT_TIMEOUT, DB_PATH
 logger = logging.getLogger(__name__)
 
 BASE_URL       = "https://ni.computrabajo.com"
-LOGIN_URL      = "https://secure.computrabajo.com/Account/Login"
+LOGIN_URL      = "https://ni.computrabajo.com/candidato/login"  # URL Nicaragua directa
+LOGIN_URL_ALT  = "https://secure.computrabajo.com/Account/Login"  # fallback
 MAX_PAGES_PER_KEYWORD = 5   # ~100 resultados máx por keyword (20 × 5)
 
 
@@ -81,9 +82,8 @@ class ComputrabajoScraper(BaseScraper):
 
     async def _login(self, page) -> bool:
         """
-        Login de candidato en Computrabajo (flujo en 2 pasos):
-          Paso 1: ingresar email → Continuar
-          Paso 2: ingresar contraseña → Iniciar sesión
+        Login de candidato en Computrabajo (flujo en 2 pasos).
+        Prueba primero la URL Nicaragua y luego la global como fallback.
         """
         try:
             creds = await self._get_creds()
@@ -91,15 +91,29 @@ class ComputrabajoScraper(BaseScraper):
                 logger.warning(f"[{self.site_name}] Sin credenciales en DB, scrapeando sin sesión")
                 return False
 
-            logger.info(f"[{self.site_name}] Iniciando login → {LOGIN_URL}")
-            await page.goto(LOGIN_URL, wait_until="domcontentloaded", timeout=60000)
-            await asyncio.sleep(random.uniform(1.5, 2.5))
+            # Intentar URL Nicaragua primero, luego fallback
+            email_input = None
+            for login_url in (LOGIN_URL, LOGIN_URL_ALT):
+                logger.info(f"[{self.site_name}] Probando login en {login_url}")
+                try:
+                    await page.goto(login_url, wait_until="domcontentloaded", timeout=60000)
+                    await asyncio.sleep(random.uniform(1.5, 2.5))
+                    email_input = await page.query_selector(
+                        "input#Email, input[type='email'], input[name='Email'], input[name='email']"
+                    )
+                    if email_input:
+                        logger.info(f"[{self.site_name}] Formulario de login encontrado en {login_url}")
+                        break
+                    logger.warning(f"[{self.site_name}] Formulario no disponible en {login_url}")
+                except Exception as ex:
+                    logger.warning(f"[{self.site_name}] Error en {login_url}: {ex}")
+                    continue
+
+            if not email_input:
+                logger.warning(f"[{self.site_name}] No se encontró formulario de login en ninguna URL")
+                return False
 
             # ── Paso 1: email ──
-            email_input = await page.query_selector("input#Email, input[type='email']")
-            if not email_input:
-                logger.warning(f"[{self.site_name}] Campo de email no encontrado en login")
-                return False
             await email_input.fill(creds["email"])
             await asyncio.sleep(random.uniform(0.5, 1.0))
 
@@ -137,8 +151,9 @@ class ComputrabajoScraper(BaseScraper):
                 pass
             await asyncio.sleep(random.uniform(2, 3))
 
-            # Verificar éxito: URL ya no contiene /Account/Login
-            if "account/login" not in page.url.lower():
+            # Verificar éxito: URL ya no es la de login
+            url_actual = page.url.lower()
+            if "account/login" not in url_actual and "candidato/login" not in url_actual:
                 logger.info(f"[{self.site_name}] ✅ Login exitoso. URL: {page.url[:60]}")
                 return True
             else:
@@ -148,6 +163,7 @@ class ComputrabajoScraper(BaseScraper):
         except Exception as e:
             logger.error(f"[{self.site_name}] Error en _login: {e}")
             return False
+
 
     async def _get_creds(self) -> dict:
         """Lee credenciales del perfil activo desde la DB."""
@@ -182,7 +198,19 @@ class ComputrabajoScraper(BaseScraper):
 
             try:
                 await page.goto(current_url, wait_until="domcontentloaded", timeout=60000)
-                await asyncio.sleep(random.uniform(2, 3.5))
+
+                # ── CLAVE: esperar a que los article se rendericen (JS-rendered) ──
+                # Computrabajo carga las tarjetas vía JS después del DOMContentLoaded
+                try:
+                    await page.wait_for_selector(
+                        "article, #offersGridOfferContainer, .js-o-offer",
+                        timeout=12000
+                    )
+                except Exception:
+                    # Si no aparecen en 12s, probablemente CAPTCHA o página de error
+                    logger.warning(f"[{self.site_name}] '{keyword}' pág.{page_num}: timeout esperando tarjetas")
+
+                await asyncio.sleep(random.uniform(1.5, 2.5))
             except Exception as e:
                 logger.error(f"[{self.site_name}] Error cargando pág.{page_num}: {e}")
                 break
@@ -194,6 +222,9 @@ class ComputrabajoScraper(BaseScraper):
             logger.info(f"[{self.site_name}] '{keyword}' pág.{page_num}: {len(cards)} tarjetas")
 
             if not cards:
+                # Loguear el título de la página para diagnóstico
+                title = await page.title()
+                logger.warning(f"[{self.site_name}] Página sin tarjetas. Título: '{title}'")
                 break
 
             for card in cards:
