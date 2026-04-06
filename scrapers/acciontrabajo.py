@@ -41,11 +41,6 @@ class AcciontrabajoScraper(BaseScraper):
                     await page.wait_for_load_state("networkidle", timeout=60000)
                     await asyncio.sleep(3)
                     
-                    # DEBUG: Screenshot
-                    debug_path = f"logs/debug_search_{keyword.replace(' ', '_')}.png"
-                    await page.screenshot(path=debug_path)
-                    logger.info(f"[{self.site_name}] DEBUG: Screenshot guardada en {debug_path}")
-
                     # Selector confirmado: .vacancy_card
                     cards = await page.query_selector_all(".vacancy_card")
                     logger.info(f"[{self.site_name}] Encontradas {len(cards)} tarjetas .vacancy_card")
@@ -114,24 +109,3 @@ class AcciontrabajoScraper(BaseScraper):
         logger.info(f"[{self.site_name}] Total únicas encontradas: {len(unique_jobs)}")
         return list(unique_jobs)
 
-if __name__ == "__main__":
-    import os
-    # Asegurar que el directorio de logs existe
-    os.makedirs("logs", exist_ok=True)
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-    from playwright.async_api import async_playwright
-    async def test():
-        async with async_playwright() as p:
-            s = AcciontrabajoScraper()
-            # Forzamos una keyword simple para test repentino
-            s._get_keywords = lambda: asyncio.Future()
-            s._get_keywords().set_result(["ventas"])
-            
-            jobs = await s.scrape(p)
-            for j in jobs[:5]:
-                print(f"DEBUG: Found {j['title']} at {j['url']} (Location: {j['location']})")
-            print(f"Encontrados {len(jobs)} empleos en {s.site_name}")
-    asyncio.run(test())
