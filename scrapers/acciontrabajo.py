@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import urllib.parse
+import re
+import unicodedata
 from scrapers.base import BaseScraper
 from config import PLAYWRIGHT_TIMEOUT
 
@@ -11,12 +13,20 @@ class AcciontrabajoScraper(BaseScraper):
         super().__init__("acciontrabajo", profile_id)
         self.base_url = "https://ni.acciontrabajo.com/"
 
+    def _slugify(self, text: str) -> str:
+        """Convierte 'Atención al Cliente' en 'atencion-al-cliente'."""
+        text = unicodedata.normalize('NFD', text).encode('ascii', 'ignore').decode('utf-8')
+        text = text.lower()
+        # Reemplazar espacios y caracteres no deseados con guiones
+        text = re.sub(r'[^a-z0-9]+', '-', text).strip('-')
+        return text
+
     async def scrape(self, playwright) -> list[dict]:
         all_jobs = []
         browser, context = await self.get_browser_context(playwright)
         page = await context.new_page()
-        # Aumentamos el timeout por defecto para el VPS a 45s
-        page.set_default_timeout(45000) 
+        # Timeout extendido para el VPS
+        page.set_default_timeout(60000) 
 
         try:
             keywords = await self._get_keywords()
@@ -28,38 +38,40 @@ class AcciontrabajoScraper(BaseScraper):
                 logger.info(f"[{self.site_name}] Escaneando keyword: {keyword}")
                 
                 try:
-                    # Intentar búsqueda directa para mayor velocidad y evitar problemas de carga del home
-                    q_encoded = urllib.parse.quote_plus(keyword)
-                    search_url = f"{self.base_url}buscar?q={q_encoded}&l=Nicaragua"
+                    # 1. Intentar URL amigable (SEO) - Formato: empleos-de-{slug}-en-nicaragua
+                    slug = self._slugify(keyword)
+                    search_url = f"{self.base_url}empleos-de-{slug}-en-nicaragua"
                     
-                    logger.info(f"[{self.site_name}] Navegando a resultados: {search_url}")
-                    # Usamos networkidle porque el sitio tiene carga dinámica
+                    logger.info(f"[{self.site_name}] Intentando URL SEO: {search_url}")
                     response = await page.goto(search_url, wait_until="domcontentloaded", timeout=60000)
                     
-                    # Pequeña pausa para asegurar renderizado inicial
-                    await asyncio.sleep(3)
-
-                    # Si el servidor responde con error o no carga el buscador, intentar vía el formulario del Home
+                    # 2. Si falla (403 o 404), intentar búsqueda tradicional con más tiempo
                     if not response or response.status >= 400:
-                        logger.warning(f"[{self.site_name}] Búsqueda directa falló (Status {response.status if response else 'N/A'}). Intentando vía Home...")
+                        logger.warning(f"[{self.site_name}] URL SEO falló (Status {response.status if response else 'N/A'}). Intentando vía buscador...")
                         await page.goto(self.base_url, wait_until="networkidle", timeout=60000)
-                        await page.wait_for_selector("input.q", timeout=20000)
-                        await page.fill("input.q", keyword)
-                        await page.fill("input.l", "Nicaragua")
-                        await page.press("input.l", "Enter")
-                        await page.wait_for_load_state("networkidle", timeout=60000)
+                        
+                        # Esperar al input de búsqueda
+                        q_input = await page.wait_for_selector("input.q", timeout=30000)
+                        if q_input:
+                            await q_input.fill(keyword)
+                            await page.fill("input.l", "Nicaragua")
+                            await page.keyboard.press("Enter")
+                            await page.wait_for_load_state("networkidle", timeout=60000)
                     
-                    # Esperamos hasta 15s a que aparezca al menos una tarjeta o el mensaje de 'no hay resultados'
+                    # Pausa para renderizado de tarjetas
+                    await asyncio.sleep(4)
+
+                    # Selector de ofertas: .vacancy_card
                     try:
                         await page.wait_for_selector(".vacancy_card", timeout=15000)
                     except:
-                        pass # Quizás no hay resultados o usa el fallback h2
+                        pass # Si no aparece, quizás no hay resultados o usa el fallback h2
 
                     cards = await page.query_selector_all(".vacancy_card")
                     if not cards:
                         cards = await page.query_selector_all("h2")
                     
-                    logger.info(f"[{self.site_name}] Encontradas {len(cards)} posibles ofertas.")
+                    logger.info(f"[{self.site_name}] Encontradas {len(cards)} posibles ofertas para '{keyword}'")
                     
                     for card in cards:
                         try:
