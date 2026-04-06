@@ -68,13 +68,15 @@ class BasePoster(abc.ABC):
 
     async def get_browser_context(self, playwright, headless=True):
         """
-        Contexto de navegador con anti-detección activa.
+        Contexto de navegador con anti-detección activa + Tor proxy.
+        - Proxy Tor (SOCKS5 9050) para evadir bloqueo Cloudflare desde datacenter
         - Desactiva la bandera AutomationControlled  
         - Sobreescribe navigator.webdriver vía init script
         - Simula perfil real: locale NI, zona horaria Managua
         """
         browser = await playwright.chromium.launch(
             headless=headless,
+            proxy={"server": "socks5://127.0.0.1:9050"},  # Tor proxy
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--no-first-run",
