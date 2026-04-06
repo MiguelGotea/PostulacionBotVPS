@@ -128,8 +128,16 @@ async def init_db():
             )
         """)
 
+        # Migración: eliminar notification_email (limpieza)
+        try:
+            await db.execute("ALTER TABLE candidate_profiles DROP COLUMN notification_email")
+            logger.info("Migración: columna notification_email eliminada.")
+        except Exception:
+            pass  # Ya eliminada o versión de SQLite antigua
+
         # Semilla: perfil de Katty Valentina Coleman (id=1)
         await db.execute("""
+            INSERT OR IGNORE INTO candidate_profiles
             (id, name, email, phone, location, birth_date, civil_status, address,
              education, experience, skills, languages, salary_expectation, availability, about,
              applied_sites)
