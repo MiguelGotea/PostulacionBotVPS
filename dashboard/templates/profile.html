@@ -220,8 +220,8 @@
             </div>
         </div>
 
-        <form method="post" action="/profile/{{ active_pid }}/credentials/update" id="credentials-form">
-            <div class="portales-grid" id="portal-grid">
+        <!-- Se eliminó el formulario envolvente que causaba anidamiento ilegal de forms -->
+        <div class="portales-grid" id="portal-grid">
                 {% for site in site_configs %}
                 {% set portal = site.site_name | lower %}
                 {% set cred = profile_credentials.get(portal, {}) %}
@@ -252,6 +252,7 @@
                             <label class="pcard-label">✉ Email</label>
                             <input class="pcard-input" type="email" name="email_{{ portal }}"
                                    value="{{ cred.get('email', '') if cred else '' }}"
+                                   form="credentials-form"
                                    placeholder="correo@ejemplo.com"
                                    autocomplete="off">
                         </div>
@@ -261,6 +262,7 @@
                                 <input class="pcard-input" type="password" name="password_{{ portal }}"
                                        id="pwd-{{ portal }}"
                                        value="{{ cred.get('password', '') if cred else '' }}"
+                                       form="credentials-form"
                                        placeholder="••••••••"
                                        autocomplete="off">
                                 <button type="button" onclick="togglePwd('pwd-{{ portal }}')" class="pcard-eye" title="Mostrar/ocultar">👁</button>
@@ -303,7 +305,10 @@
 
             <!-- Barra de acciones global -->
             <div class="portales-global-bar">
-                <button type="submit" class="btn btn-apply portales-save-btn">
+                <!-- Formulario oculto para procesar las credenciales asociadas vía el atributo form -->
+                <form method="post" action="/profile/{{ active_pid }}/credentials/update" id="credentials-form"></form>
+
+                <button type="submit" form="credentials-form" class="btn btn-apply portales-save-btn">
                     🔒 Guardar Credenciales
                 </button>
                 <form method="post" action="/reintentar-rechazados" style="margin:0">
@@ -313,7 +318,6 @@
                     </button>
                 </form>
             </div>
-        </form>
     </div>
 
 </div><!-- end profile-card -->
