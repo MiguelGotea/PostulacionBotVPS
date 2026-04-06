@@ -140,31 +140,6 @@ async def toggle_site(site_name: str):
                 await db.commit()
     return RedirectResponse(url="/profile", status_code=303)
 
-@app.post("/settings/cleanup-invalid")
-async def cleanup_invalid_jobs():
-    """Elimina ofertas con URLs de categoría (sin ID numérico)."""
-    async with aiosqlite.connect(DB_PATH) as db:
-        db.row_factory = aiosqlite.Row
-        async with db.execute(
-            "SELECT id, url FROM jobs WHERE site = 'tecoloco' AND status != 'applied'"
-        ) as cursor:
-            rows = await cursor.fetchall()
-
-        import re
-        invalid_ids = []
-        for row in rows:
-            url = row['url'] or ''
-            if not re.search(r'/\d{4,}/', url):
-                invalid_ids.append(row['id'])
-
-        if invalid_ids:
-            placeholders = ','.join('?' * len(invalid_ids))
-            await db.execute(f"DELETE FROM jobs WHERE id IN ({placeholders})", invalid_ids)
-            await db.commit()
-
-        deleted = len(invalid_ids)
-
-    return RedirectResponse(url=f"/settings?msg=Limpieza+completada:+{deleted}+eliminadas", status_code=303)
 
 # ──────────────────────────────────────────────────────────────────
 # REINTENTAR RECHAZADOS
