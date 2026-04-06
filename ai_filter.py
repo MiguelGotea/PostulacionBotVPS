@@ -1,7 +1,7 @@
 """
 ai_filter.py
 ────────────
-Filtro de relevancia con IA (Gemini 2.0 Flash).
+Filtro de relevancia con IA (Gemini via GEMINI_MODEL configurado en config.py).
 
 Antes de guardar un job en la DB, se evalúa si el puesto
 es compatible con el perfil del candidato (skills, experiencia,
@@ -12,7 +12,7 @@ import json
 import logging
 import asyncio
 import aiosqlite
-from config import DB_PATH, GEMINI_API_KEY
+from config import DB_PATH, GEMINI_API_KEY, GEMINI_MODEL
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 try:
     import google.generativeai as genai
     genai.configure(api_key=GEMINI_API_KEY)
-    _model = genai.GenerativeModel("gemini-2.0-flash")
+    _model = genai.GenerativeModel(GEMINI_MODEL)
     AI_AVAILABLE = True
 except Exception as e:
     logger.warning(f"[AI Filter] Gemini no disponible: {e}")
