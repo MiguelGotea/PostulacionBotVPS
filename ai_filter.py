@@ -26,7 +26,6 @@ except Exception as e:
     logger.warning(f"[AI Filter] Gemini no disponible: {e}")
     AI_AVAILABLE = False
 
-
 async def _get_profile_summary(profile_id: int) -> str:
     """Carga un resumen del perfil del candidato desde la DB para el prompt."""
     try:
