@@ -493,7 +493,6 @@ async def update_profile(
     availability: str = Form(""),
     about: str = Form(""),
     is_active: int = Form(1),
-    notification_email: str = Form(""),
 ):
     """Actualiza un perfil de candidato."""
     async with aiosqlite.connect(DB_PATH) as db:
@@ -501,13 +500,12 @@ async def update_profile(
             UPDATE candidate_profiles SET
                 name=?, phone=?, location=?, birth_date=?, civil_status=?, address=?,
                 education=?, experience=?, skills=?, languages=?,
-                salary_expectation=?, availability=?, about=?, is_active=?,
-                notification_email=?
+                salary_expectation=?, availability=?, about=?, is_active=?
             WHERE id=?
         """, (name, phone, location, birth_date, civil_status, address,
               education, experience, skills, languages,
               salary_expectation, availability, about, is_active,
-              notification_email, profile_id))
+              profile_id))
         await db.commit()
     return RedirectResponse(url=f"/profile?pid={profile_id}&msg=Perfil+actualizado", status_code=303)
 

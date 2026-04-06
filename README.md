@@ -14,7 +14,6 @@ PostulacionBotVPS/
 ├── main.py                  # Punto de entrada del sistema
 ├── scheduler.py             # Orquestador de ciclos de escaneo y postulación
 ├── db.py                    # Inicialización y esquema de la base de datos SQLite
-├── notifier.py              # Envío de resúmenes por correo (Gmail SMTP)
 ├── config.py                # Credenciales, keywords, parámetros (NO se sube a GitHub)
 ├── requirements.txt         # Dependencias Python
 ├── ecosystem.config.js      # Configuración de PM2
@@ -73,8 +72,6 @@ PostulacionBotVPS/
   - **Limpiar Ofertas Inválidas**: Purga links de categorías que el bot pudo haber guardado por error.
 - Todas las fechas se muestran en **hora de Managua (UTC-6)**.
 
-### 📧 Notificaciones por Correo
-- Envía un resumen diario por Gmail con las postulaciones exitosas y las que requieren atención manual.
 
 ---
 
@@ -91,14 +88,6 @@ CREDENTIALS = {
     "computrabajo": {"email": "...", "password": "..."},
     "opcionempleo": {"email": "...", "password": "..."},
     # ...
-}
-
-EMAIL_CONFIG = {
-    "smtp_host": "smtp.gmail.com",
-    "smtp_port": 587,
-    "sender_email": "tu@gmail.com",
-    "sender_password": "APP_PASSWORD_GMAIL", # No la contraseña normal
-    "recipient_email": "candidata@gmail.com"
 }
 
 DASHBOARD_PORT = 8765
@@ -191,7 +180,6 @@ curl http://localhost:8765
 ## 🔐 Seguridad
 
 - `config.py` está en `.gitignore` y **NUNCA se sube a GitHub**.
-- Las credenciales de Gmail usan **App Password** de 2FA, no la contraseña principal.
 - El Dashboard no tiene autenticación (solo accesible desde la IP del VPS).
 
 ---
@@ -213,5 +201,5 @@ curl http://localhost:8765
 
 - [ ] Autenticación básica en el Dashboard
 - [ ] Soporte para más portales (Indeed, Glassdoor)
-- [ ] Notificaciones por Telegram además de email
+- [ ] Notificaciones por Telegram
 - [ ] Filtro por salario mínimo en las búsquedas

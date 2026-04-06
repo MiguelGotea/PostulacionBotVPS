@@ -22,7 +22,6 @@ from poster.computrabajo import ComputrabajoPoster
 from poster.opcionempleo import OpcionempleoPoster
 from poster.acciontrabajo import AcciontrabajoPoster
 
-from notifier import send_summary
 import aiosqlite
 
 logger = logging.getLogger(__name__)
@@ -74,7 +73,7 @@ async def get_active_profiles() -> list[dict]:
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute(
-            "SELECT id, name, notification_email FROM candidate_profiles WHERE is_active = 1 ORDER BY id"
+            "SELECT id, name FROM candidate_profiles WHERE is_active = 1 ORDER BY id"
         ) as cursor:
             return [dict(r) for r in await cursor.fetchall()]
 
@@ -109,7 +108,7 @@ async def run_single_site_scan(site_name: str, profile_id: int = None):
             async with aiosqlite.connect(DB_PATH) as db:
                 db.row_factory = aiosqlite.Row
                 async with db.execute(
-                    "SELECT id, name, notification_email FROM candidate_profiles WHERE id=?", (profile_id,)
+                    "SELECT id, name FROM candidate_profiles WHERE id=?", (profile_id,)
                 ) as cursor:
                     row = await cursor.fetchone()
                     profiles_to_scan = [dict(row)] if row else []
@@ -374,16 +373,6 @@ async def _do_scan_cycle():
 
         all_applied_by_profile[profile_id] = applied_successfully
         all_manual_by_profile[profile_id] = manual_jobs
-
-    # 4. Notificaciones por candidato
-    for profile in profiles:
-        pid    = profile['id']
-        recipient = profile.get('notification_email', '')
-        applied = all_applied_by_profile.get(pid, [])
-        manual  = all_manual_by_profile.get(pid, [])
-        if (applied or manual) and recipient:
-            stats = {'found': len(applied) + len(manual), 'vps_ip': 'localhost'}
-            await send_summary(applied, manual, stats, recipient_email=recipient, candidate_name=profile['name'])
 
     now_managua = datetime.now() - timedelta(hours=6)
     logger.info(f"--- Fin de ciclo automático: {now_managua} ---")

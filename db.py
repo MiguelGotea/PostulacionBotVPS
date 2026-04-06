@@ -124,23 +124,16 @@ async def init_db():
                 availability TEXT,
                 about TEXT,
                 applied_sites TEXT DEFAULT 'all',
-                notification_email TEXT,
                 created_at TEXT DEFAULT (datetime('now', '-6 hours'))
             )
         """)
-        # Migración: agregar notification_email a candidatos existentes
-        try:
-            await db.execute("ALTER TABLE candidate_profiles ADD COLUMN notification_email TEXT")
-        except Exception:
-            pass
 
         # Semilla: perfil de Katty Valentina Coleman (id=1)
         await db.execute("""
-            INSERT OR IGNORE INTO candidate_profiles
             (id, name, email, phone, location, birth_date, civil_status, address,
              education, experience, skills, languages, salary_expectation, availability, about,
-             applied_sites, notification_email)
-            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'all', ?)
+             applied_sites)
+            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'all')
         """, (
             "Katty Valentina Coleman Antonio",
             "kmolly220@gmail.com",
@@ -165,7 +158,7 @@ async def init_db():
             "acelerado. Estudiante activa de Marketing en la Universidad Central de Nicaragua. "
             "Me caracterizo por mi actitud proactiva, puntualidad y capacidad para adaptarme "
             "rápidamente a diferentes ambientes de trabajo.",
-            "kmolly220@gmail.com",  # notification_email
+            "kmolly220@gmail.com",
         ))
 
         # ─── Credenciales por perfil y portal ──────────────────────────────
