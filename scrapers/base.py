@@ -3,15 +3,16 @@ import asyncio
 import random
 import logging
 import aiosqlite
-from config import DB_PATH, USER_AGENTS, MIN_DELAY, MAX_DELAY
+from config import DB_PATH, USER_AGENTS, MIN_DELAY, MAX_DELAY, GEMINI_AI_FILTER_ENABLED
 
 logger = logging.getLogger(__name__)
 
+
 class BaseScraper(abc.ABC):
     def __init__(self, site_name: str, profile_id: int = 1):
-        self.site_name = site_name
-        self.db_path = DB_PATH
-        self.profile_id = profile_id  # Candidato para el que se escanea
+        self.site_name  = site_name
+        self.db_path    = DB_PATH
+        self.profile_id = profile_id
 
     @abc.abstractmethod
     async def scrape(self, playwright) -> list[dict]:
@@ -37,9 +38,24 @@ class BaseScraper(abc.ABC):
 
     async def save_jobs(self, jobs: list[dict]) -> int:
         """
-        Guarda los trabajos encontrados en esta búsqueda asociados al profile_id.
+        Guarda los trabajos encontrados, opcionalmente filtrando por relevancia IA.
         Solo inserta URLs que no existan ya en DB para este perfil.
         """
+        # ── Filtro IA de relevancia ────────────────────────────────────────
+        if GEMINI_AI_FILTER_ENABLED and jobs:
+            try:
+                from ai_filter import filter_jobs_batch
+                jobs, rejected = await filter_jobs_batch(jobs, self.profile_id, enabled=True)
+                if rejected:
+                    logger.info(
+                        f"[{self.site_name}] IA rechazó {len(rejected)} ofertas irrelevantes: "
+                        + ", ".join(f"'{j.get('title','?')}'" for j in rejected[:3])
+                        + ("..." if len(rejected) > 3 else "")
+                    )
+            except Exception as e:
+                logger.warning(f"[{self.site_name}] Error en filtro IA, guardando todo: {e}")
+
+        # ── Persistir en DB ────────────────────────────────────────────────
         new_jobs_count = 0
         async with aiosqlite.connect(self.db_path) as db:
             for job in jobs:
@@ -76,14 +92,22 @@ class BaseScraper(abc.ABC):
         ) as cursor:
             return await cursor.fetchone() is None
 
-    async def get_browser_context(self, playwright):
-        """Retorna un contexto de navegador con user-agent aleatorio y viewport random."""
-        browser = await playwright.chromium.launch(headless=True)
-        context = await browser.new_context(
-            user_agent=random.choice(USER_AGENTS),
-            viewport={'width': random.randint(1280, 1920), 'height': random.randint(720, 1080)}
-        )
-        return browser, context
+    async def get_browser_context(self, playwright, headless: bool = True):
+        """
+        Retorna un contexto de navegador con stealth completo.
+        Usa utils/stealth.py si está disponible, sino fallback al método legado.
+        """
+        try:
+            from utils.stealth import stealth_context
+            return await stealth_context(playwright, headless=headless)
+        except ImportError:
+            # Fallback al método original
+            browser = await playwright.chromium.launch(headless=headless)
+            context = await browser.new_context(
+                user_agent=random.choice(USER_AGENTS),
+                viewport={'width': random.randint(1280, 1920), 'height': random.randint(720, 1080)}
+            )
+            return browser, context
 
     async def human_delay(self):
         """Espera aleatoria para simular comportamiento humano."""
@@ -98,3 +122,24 @@ class BaseScraper(abc.ABC):
                 VALUES (?, ?, ?, ?, datetime('now', '-6 hours'))
             """, (self.profile_id, self.site_name, jobs_found, errors))
             await db.commit()
+
+    async def retry_scrape(self, playwright, max_attempts: int = 3, base_delay: float = 30.0) -> list[dict]:
+        """
+        Ejecuta self.scrape con reintentos y backoff exponencial.
+        Útil para llamarlo desde el scheduler en lugar de scrape() directamente.
+        """
+        delay = base_delay
+        for attempt in range(1, max_attempts + 1):
+            try:
+                return await self.scrape(playwright)
+            except Exception as e:
+                if attempt == max_attempts:
+                    logger.error(f"[{self.site_name}] Falló tras {max_attempts} intentos: {e}")
+                    raise
+                logger.warning(
+                    f"[{self.site_name}] Intento {attempt}/{max_attempts} falló: {e}. "
+                    f"Reintentando en {delay:.0f}s..."
+                )
+                await asyncio.sleep(delay)
+                delay *= 2.0  # backoff exponencial
+        return []

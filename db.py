@@ -68,10 +68,18 @@ async def init_db():
         
         # Poblar con sitios por defecto si está vacía
         default_sites = [
-            'tecoloco', 'computrabajo', 'opcionempleo', 
-            'acciontrabajo', 'encuentra24', 'linkedin'
+            'tecoloco', 'computrabajo', 'opcionempleo',
+            'acciontrabajo', 'encuentra24', 'linkedin',
+            # Nuevos portales (stubs — postulación pendiente de entrenamiento)
+            'magneto', 'bumeran', 'olx'
         ]
         for site in default_sites:
+            await db.execute("""
+                INSERT OR IGNORE INTO site_configs (site_name, is_enabled) 
+                VALUES (?, 0)
+            """, (site,))
+        # Los portales originales activos por defecto
+        for site in ['tecoloco', 'computrabajo', 'opcionempleo', 'acciontrabajo', 'encuentra24', 'linkedin']:
             await db.execute("""
                 INSERT OR IGNORE INTO site_configs (site_name, is_enabled) 
                 VALUES (?, 1)
@@ -176,7 +184,9 @@ async def init_db():
         # Semilla: credenciales actuales de Katty (profile_id=1)
         katty_sites = [
             'tecoloco', 'computrabajo', 'opcionempleo',
-            'acciontrabajo', 'encuentra24', 'linkedin'
+            'acciontrabajo', 'encuentra24', 'linkedin',
+            # Nuevos portales (credenciales a llenar desde el dashboard)
+            'magneto', 'bumeran', 'olx'
         ]
         katty_creds = {
             'tecoloco':     ('kmolly220@gmail.com', 'KattyColeman0003'),
@@ -185,6 +195,10 @@ async def init_db():
             'acciontrabajo':('kmolly220@gmail.com', 'KattyColeman003'),
             'encuentra24':  ('kmolly220@gmail.com', 'KattyColeman0003'),
             'linkedin':     ('kmolly220@gmail.com', 'KattyColeman003'),
+            # Nuevos: credenciales vacías por defecto (llenar desde /profile)
+            'magneto':      ('', ''),
+            'bumeran':      ('', ''),
+            'olx':          ('', ''),
         }
         for site in katty_sites:
             email, pwd = katty_creds.get(site, ('', ''))

@@ -21,7 +21,12 @@ app = FastAPI(title="Jobs Dashboard")
 app.mount("/static", StaticFiles(directory="dashboard/static"), name="static")
 templates = Jinja2Templates(directory="dashboard/templates")
 
-PORTALES = ['tecoloco', 'computrabajo', 'opcionempleo', 'acciontrabajo', 'encuentra24', 'linkedin']
+PORTALES = [
+    # Operativos
+    'tecoloco', 'computrabajo', 'opcionempleo', 'acciontrabajo', 'encuentra24', 'linkedin',
+    # Nuevos (stubs — postulación pendiente)
+    'magneto', 'bumeran', 'olx',
+]
 
 # ──────────────────────────────────────────────────────────────────
 # Helpers
@@ -139,6 +144,93 @@ async def toggle_site(site_name: str):
                 await db.execute("UPDATE site_configs SET is_enabled = ? WHERE site_name = ?", (new_status, site_name))
                 await db.commit()
     return RedirectResponse(url="/profile", status_code=303)
+
+
+# ──────────────────────────────────────────────────────────────────
+# API: Estadísticas de Monitoreo
+# ──────────────────────────────────────────────────────────────────
+
+@app.get("/api/stats/hourly")
+async def api_stats_hourly(days: int = 7):
+    """
+    Retorna el conteo de jobs encontrados por hora del día (promedio últimos N días).
+    Para la gráfica de actividad en Panel de Control.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute("""
+            SELECT 
+                CAST(strftime('%H', scan_date) AS INTEGER) as hour,
+                SUM(jobs_found) as total_found,
+                COUNT(*) as scan_count,
+                ROUND(CAST(SUM(jobs_found) AS FLOAT) / NULLIF(COUNT(DISTINCT date(scan_date)), 0), 1) as avg_found
+            FROM scan_log
+            WHERE scan_date >= datetime('now', '-' || ? || ' days', '-6 hours')
+            GROUP BY hour
+            ORDER BY hour
+        """, (days,)) as cursor:
+            rows = await cursor.fetchall()
+        
+        # Stats por portal (tasa de éxito)
+        async with db.execute("""
+            SELECT 
+                j.site,
+                COUNT(*) as total,
+                SUM(CASE WHEN j.status='applied' THEN 1 ELSE 0 END) as applied,
+                ROUND(
+                    100.0 * SUM(CASE WHEN j.status='applied' THEN 1 ELSE 0 END) / NULLIF(COUNT(*), 0),
+                    1
+                ) as success_rate
+            FROM jobs j
+            GROUP BY j.site
+            ORDER BY success_rate DESC
+        """) as cursor:
+            portal_stats = await cursor.fetchall()
+
+        # Escaneos de las últimas 24h (para "actividad reciente")
+        async with db.execute("""
+            SELECT site, jobs_found, scan_date, errors
+            FROM scan_log
+            WHERE scan_date >= datetime('now', '-1 day', '-6 hours')
+            ORDER BY scan_date DESC
+            LIMIT 50
+        """) as cursor:
+            recent_scans = await cursor.fetchall()
+
+    # Construir array de 24 horas
+    hourly_map = {row['hour']: row for row in rows}
+    hourly_data = [
+        {
+            "hour": h,
+            "label": f"{h:02d}:00",
+            "avg_found": hourly_map[h]['avg_found'] if h in hourly_map else 0,
+            "total_found": hourly_map[h]['total_found'] if h in hourly_map else 0,
+        }
+        for h in range(24)
+    ]
+
+    return JSONResponse({
+        "hourly": hourly_data,
+        "portal_stats": [
+            {
+                "site": r['site'],
+                "total": r['total'],
+                "applied": r['applied'],
+                "success_rate": r['success_rate'] or 0,
+            }
+            for r in portal_stats
+        ],
+        "recent_scans": [
+            {
+                "site": r['site'],
+                "jobs_found": r['jobs_found'],
+                "scan_date": r['scan_date'],
+                "has_error": bool(r['errors']),
+            }
+            for r in recent_scans
+        ],
+        "days_analyzed": days,
+    })
 
 
 # ──────────────────────────────────────────────────────────────────

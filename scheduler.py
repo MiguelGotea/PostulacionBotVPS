@@ -12,6 +12,10 @@ from scrapers.opcionempleo import OpcionempleoScraper
 from scrapers.acciontrabajo import AcciontrabajoScraper
 from scrapers.encuentra24 import Encuentra24Scraper
 from scrapers.linkedin import LinkedinScraper
+# Nuevos portales (stubs — postulación pendiente de entrenamiento)
+from scrapers.magneto import MagnetoScraper
+from scrapers.bumeran import BumeranScraper
+from scrapers.olx import OLXScraper
 
 from poster.tecoloco import TecolocoPoster
 from poster.computrabajo import ComputrabajoPoster
@@ -28,12 +32,17 @@ _cycle_lock = asyncio.Lock()
 _is_running  = False
 
 SCRAPER_CLASSES = {
+    # Portales operativos
     'tecoloco':     TecolocoScraper,
     'computrabajo': ComputrabajoScraper,
     'opcionempleo': OpcionempleoScraper,
     'acciontrabajo': AcciontrabajoScraper,
     'encuentra24':  Encuentra24Scraper,
     'linkedin':     LinkedinScraper,
+    # Nuevos portales (stubs — solo escaneo, postulación pendiente de entrenamiento)
+    'magneto':  MagnetoScraper,
+    'bumeran':  BumeranScraper,
+    'olx':      OLXScraper,
 }
 
 async def get_active_profiles() -> list[dict]:
