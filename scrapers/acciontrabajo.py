@@ -17,52 +17,80 @@ class AcciontrabajoScraper(BaseScraper):
         page.set_default_timeout(PLAYWRIGHT_TIMEOUT)
 
         try:
-            for keyword in await self._get_keywords():
-                # URL búsqueda: https://ni.acciontrabajo.com/buscar?q={keyword}&l=Managua
-                search_url = f"{self.base_url}buscar?q={keyword}&l=Managua"
+            keywords = await self._get_keywords()
+            if not keywords:
+                logger.warning(f"[{self.site_name}] No se encontraron keywords para escaneo.")
+                return []
+
+            for keyword in keywords:
+                # URL búsqueda: https://ni.acciontrabajo.com/buscar?q={keyword}&l=Nicaragua
+                search_url = f"{self.base_url}buscar?q={keyword.replace(' ', '+')}&l=Nicaragua"
                 
                 logger.info(f"[{self.site_name}] Escaneando keyword: {keyword} -> {search_url}")
                 
                 try:
-                    await page.goto(search_url, wait_until="domcontentloaded")
-                    await self.human_delay()
+                    await page.goto(search_url, wait_until="networkidle", timeout=60000)
+                    await asyncio.sleep(3) # Esperar a que carguen los resultados AJAX
 
-                    # Extraer tarjetas de oferta (Selectores ultra-agresivos)
-                    job_cards = await page.query_selector_all(".job-result, .card, .job-item, .listing-card, article")
+                    # Intentar detectar el contenedor de resultados o los h2 directamente
+                    # A veces las ofertas están en un iframe o panel dinámico
+                    job_elements = await page.query_selector_all("h2")
+                    logger.info(f"[{self.site_name}] Encontrados {len(job_elements)} elementos H2")
                     
-                    if not job_cards:
-                        # Reintento con cualquier link que parezca una oferta
-                        job_cards = await page.query_selector_all("a[href*='empleos/'], a[href*='ofertas-de-trabajo/']")
+                    if not job_elements:
+                        # Reintento con selectores alternativos
+                        job_elements = await page.query_selector_all(".vacancy-item h2, .job-item h2, a.job-link")
 
-                    for card in job_cards[:20]:
+                    for el in job_elements:
                         try:
-                            # Buscar el título
-                            title_el = await card.query_selector("h2, .title, .job-title, strong")
-                            title = await title_el.inner_text() if title_el else "Oferta de Empleo"
-                            
-                            # Buscar el link
-                            url = await card.get_attribute("href")
+                            title = (await el.inner_text()).strip()
+                            if not title or len(title) < 4:
+                                continue
+
+                            # Link
+                            url = await el.get_attribute("href")
                             if not url:
-                                link_el = await card.query_selector("a")
+                                link_el = await el.query_selector("a")
                                 if link_el: url = await link_el.get_attribute("href")
+                            
+                            if not url or "javascript" in url:
+                                continue
 
-                            if url and not url.startswith("http"):
-                                url = self.base_url.rstrip("/") + url
+                            if not url.startswith("http"):
+                                url = self.base_url.rstrip("/") + (url if url.startswith("/") else f"/{url}")
 
-                            company_el = await card.query_selector(".company, .employer, [class*='empresa']")
-                            company = await company_el.inner_text() if company_el else "Confidencial"
+                            # Ubicación y Empresa
+                            location = "Nicaragua"
+                            company = "Confidencial"
+                            
+                            # Intentar navegar hacia arriba al contenedor de la oferta
+                            # Según la captura, la info está bajo el H2 o en hermanos
+                            parent = await el.evaluate_handle("el => el.closest('div') || el.parentElement")
+                            
+                            # Buscar en el parent o hermanos del titulo
+                            if parent:
+                                b_el = await parent.query_selector("b")
+                                if b_el:
+                                    company = (await b_el.inner_text()).strip()
+                                
+                                # La ubicación suele ser el primer div que no sea el título
+                                divs = await parent.query_selector_all("div")
+                                for d in divs:
+                                    txt = (await d.inner_text()).strip()
+                                    if txt and "," in txt and len(txt) < 100:
+                                        location = txt
+                                        break
 
-                            if url and ("empleos" in url.lower() or "ofertas" in url.lower()):
-                                all_jobs.append({
-                                    'title': title.strip()[:100],
-                                    'company': company.strip()[:100],
-                                    'location': "Nicaragua",
-                                    'url': url,
-                                    'site': self.site_name,
-                                    'requires_manual': False
-                                })
+                            all_jobs.append({
+                                'title': title[:100],
+                                'company': company[:100],
+                                'location': location[:120],
+                                'url': url,
+                                'site': self.site_name,
+                                'requires_manual': False
+                            })
                         except Exception as e:
-                            logger.error(f"Error procesando tarjeta en {self.site_name}: {e}")
+                            logger.error(f"Error procesando elemento en {self.site_name}: {e}")
                             continue
 
                 except Exception as e:
@@ -72,7 +100,9 @@ class AcciontrabajoScraper(BaseScraper):
         finally:
             await browser.close()
 
-        unique_jobs = {j['url']: j for j in all_jobs}.values()
+        # Eliminar duplicados y jobs sin URL
+        unique_jobs = {j['url']: j for j in all_jobs if j.get('url')}.values()
+        logger.info(f"[{self.site_name}] Total únicas encontradas: {len(unique_jobs)}")
         return list(unique_jobs)
 
 if __name__ == "__main__":
