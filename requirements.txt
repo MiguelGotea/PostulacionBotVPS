@@ -8,3 +8,5 @@ aiosqlite==0.20.0
 python-multipart==0.0.9
 setuptools
 aiohttp>=3.9.0
+curl_cffi>=0.6.0
+beautifulsoup4>=4.12.0
