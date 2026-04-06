@@ -165,8 +165,7 @@ async def init_db():
             "Joven profesional nicaragüense con experiencia en atención al cliente en entornos de ritmo "
             "acelerado. Estudiante activa de Marketing en la Universidad Central de Nicaragua. "
             "Me caracterizo por mi actitud proactiva, puntualidad y capacidad para adaptarme "
-            "rápidamente a diferentes ambientes de trabajo.",
-            "kmolly220@gmail.com",
+            "rápidamente a diferentes ambientes de trabajo."
         ))
 
         # ─── Credenciales por perfil y portal ──────────────────────────────

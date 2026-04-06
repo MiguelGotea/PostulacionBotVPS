@@ -7,6 +7,19 @@ Sistema inteligente de automatización de búsqueda y postulación de ofertas la
 
 ---
 
+## ⚠️ Importante: Entorno Virtual (VENV)
+
+Para ejecutar cualquier script de Python (`db.py`, `main.py`, etc.) o usar bibliotecas como `playwright` manualmente en el VPS, **siempre** debes activar el entorno virtual primero:
+
+```bash
+cd /root/postulacion-bot
+source venv/bin/activate  # o source env/bin/activate
+```
+
+Si no ves el prefijo `(venv)` o `(env)` en tu terminal, los comandos fallarán porque las dependencias no estarán disponibles globalmente.
+
+---
+
 ## 🗂️ Estructura del Proyecto
 
 ```
