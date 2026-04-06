@@ -5,33 +5,63 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}PostulacionBot{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', path='/style.css') }}">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
-    <div class="sidebar">
+    <!-- ── Sidebar ──────────────────────────────────────── -->
+    <aside class="sidebar">
         <div class="sidebar-header">
-            <h2>PostulacionBot</h2>
+            <a href="/" class="sb-logo">
+                <div class="sb-logo-icon">🤖</div>
+                <div>
+                    <div class="sb-logo-text">PostulacionBot</div>
+                    <div class="sb-logo-sub">Nicaragua · Multi-candidato</div>
+                </div>
+            </a>
         </div>
+
         <nav class="sidebar-nav">
+            <div class="nav-section-label">Gestión</div>
             <ul>
-                <li><a href="/applied" class="{% if request.url.path == '/applied' %}active{% endif %}">Postulaciones</a></li>
-                <li><a href="/profile" class="{% if request.url.path == '/profile' %}active{% endif %}">Candidatos</a></li>
-                <li><a href="/settings" class="{% if request.url.path == '/settings' %}active{% endif %}">Panel de Control</a></li>
+                <li>
+                    <a href="/applied" class="{% if request.url.path == '/applied' %}active{% endif %}">
+                        <span class="nav-icon">📋</span>
+                        Postulaciones
+                    </a>
+                </li>
+                <li>
+                    <a href="/profile" class="{% if request.url.path == '/profile' %}active{% endif %}">
+                        <span class="nav-icon">👤</span>
+                        Candidatos
+                    </a>
+                </li>
+                <li>
+                    <a href="/settings" class="{% if request.url.path == '/settings' %}active{% endif %}">
+                        <span class="nav-icon">📊</span>
+                        Panel de Control
+                    </a>
+                </li>
             </ul>
         </nav>
-        <div class="sidebar-footer">
-            <p>Bots de Postulación Nicaragua</p>
-        </div>
-    </div>
 
+        <div class="sidebar-footer">
+            <div class="sb-status">
+                <div class="sb-status-dot"></div>
+                <span class="sb-status-text">Sistema activo</span>
+            </div>
+            <div class="sb-version">PostulacionBot v2.0 · 2026</div>
+        </div>
+    </aside>
+
+    <!-- ── Main ─────────────────────────────────────────── -->
     <div class="main-content">
         <header class="top-bar">
-            <span>Control de Búsqueda y Automatización</span>
-            <div class="top-stats">
-              <span class="badge success">Vigo v1.2</span>
+            <span class="top-bar-title">Control de Búsqueda y Automatización</span>
+            <div class="top-bar-badges">
+                <span class="version-badge">⚡ Vigo v2.0</span>
             </div>
         </header>
-        
+
         <main class="page-container">
             {% block content %}{% endblock %}
         </main>
