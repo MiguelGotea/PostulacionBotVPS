@@ -6,7 +6,7 @@ Write-Host "Iniciando proceso de envio para PostulacionBot..." -ForegroundColor 
 
 # 1. Preparar commits
 git add .
-$msg = "Katty Update $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+$msg = "PostulacionBot Update $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
 git commit -m "$msg" 2>$null
 
 # 2. Sincronizacion Segura
