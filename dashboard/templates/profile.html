@@ -207,94 +207,109 @@
     </div>
 
     <!-- ── Portales y Credenciales ── -->
-    <div class="keywords-section" style="margin-top:0">
-        <h3>🌍 Portales &amp; Credenciales</h3>
-        <p class="keywords-desc">
-            Administra el estado, acciones y credenciales de cada portal de empleo para este candidato.
-        </p>
+    <div class="portales-section">
+
+        <!-- Cabecera de sección -->
+        <div class="portales-section-header">
+            <div class="portales-section-title">
+                <span class="portales-icon-pill">🌍</span>
+                <div>
+                    <h3>Portales &amp; Credenciales</h3>
+                    <p>Estado, credenciales y acciones por portal para <strong>{{ active_profile.name.split()[0] }}</strong></p>
+                </div>
+            </div>
+        </div>
 
         <form method="post" action="/profile/{{ active_pid }}/credentials/update" id="credentials-form">
-            <div class="portal-unified-grid" id="portal-grid">
+            <div class="portales-grid" id="portal-grid">
                 {% for site in site_configs %}
                 {% set portal = site.site_name | lower %}
                 {% set cred = profile_credentials.get(portal, {}) %}
-                <div class="portal-unified-card" id="portal-card-{{ site.site_name }}">
+                {% set has_creds = cred and (cred.get('email') or cred.get('password')) %}
 
-                    <!-- Encabezado: badge + toggle -->
-                    <div class="portal-card-header">
-                        <span class="site-badge badge-{{ portal }}">{{ site.site_name | capitalize }}</span>
+                <div class="pcard {% if site.is_enabled %}pcard--on{% else %}pcard--off{% endif %}" id="portal-card-{{ site.site_name }}">
+
+                    <!-- ▸ Tira de color superior -->
+                    <div class="pcard-stripe pcard-stripe--{{ portal }}"></div>
+
+                    <!-- ▸ Header de la tarjeta -->
+                    <div class="pcard-head">
+                        <div class="pcard-name">
+                            <span class="pcard-dot {% if site.is_enabled %}pcard-dot--on{% else %}pcard-dot--off{% endif %}"></span>
+                            <span class="pcard-site-name">{{ site.site_name | capitalize }}</span>
+                        </div>
                         <form action="/settings/toggle-site/{{ site.site_name }}" method="post" style="margin:0">
                             <input type="hidden" name="pid" value="{{ active_pid }}">
-                            <button type="submit" class="toggle-btn {% if site.is_enabled %}active{% endif %}">
-                                {% if site.is_enabled %}✅ Activo{% else %}⏸ Inactivo{% endif %}
+                            <button type="submit" class="pcard-toggle {% if site.is_enabled %}pcard-toggle--on{% else %}pcard-toggle--off{% endif %}">
+                                {% if site.is_enabled %}Activo{% else %}Inactivo{% endif %}
                             </button>
                         </form>
                     </div>
 
-                    <!-- Separador -->
-                    <hr class="portal-divider">
-
-                    <!-- Credenciales -->
-                    <div class="portal-credentials">
-                        <div class="form-group">
-                            <label>Email</label>
-                            <input class="form-input" type="email" name="email_{{ portal }}"
+                    <!-- ▸ Cuerpo: credenciales -->
+                    <div class="pcard-body">
+                        <div class="pcard-field">
+                            <label class="pcard-label">✉ Email</label>
+                            <input class="pcard-input" type="email" name="email_{{ portal }}"
                                    value="{{ cred.get('email', '') if cred else '' }}"
-                                   placeholder="correo@ejemplo.com">
+                                   placeholder="correo@ejemplo.com"
+                                   autocomplete="off">
                         </div>
-                        <div class="form-group" style="margin-top:.5rem">
-                            <label>Contraseña</label>
-                            <div style="position:relative">
-                                <input class="form-input" type="password" name="password_{{ portal }}"
+                        <div class="pcard-field">
+                            <label class="pcard-label">🔑 Contraseña</label>
+                            <div class="pcard-pwd-wrap">
+                                <input class="pcard-input" type="password" name="password_{{ portal }}"
                                        id="pwd-{{ portal }}"
                                        value="{{ cred.get('password', '') if cred else '' }}"
-                                       placeholder="••••••••">
-                                <button type="button" onclick="togglePwd('pwd-{{ portal }}')"
-                                        class="btn-toggle-pwd">👁</button>
+                                       placeholder="••••••••"
+                                       autocomplete="off">
+                                <button type="button" onclick="togglePwd('pwd-{{ portal }}')" class="pcard-eye" title="Mostrar/ocultar">👁</button>
                             </div>
                         </div>
+                        {% if has_creds %}
+                        <div class="pcard-cred-ok">✅ Credenciales guardadas</div>
+                        {% else %}
+                        <div class="pcard-cred-empty">⚠ Sin credenciales</div>
+                        {% endif %}
                     </div>
 
-                    <!-- Separador -->
-                    <hr class="portal-divider">
-
-                    <!-- Acciones -->
-                    <div class="portal-card-actions">
+                    <!-- ▸ Footer: acciones -->
+                    <div class="pcard-foot">
                         <form action="/settings/scan-site/{{ site.site_name }}/{{ active_pid }}" method="post" style="margin:0;flex:1">
-                            <button type="submit" class="btn-scan" style="width:100%" title="Escanear este portal ahora">
-                                🔍 Escanear
+                            <button type="submit" class="pcard-btn pcard-btn--scan" title="Escanear ahora">
+                                <span>🔍</span> Escanear
                             </button>
                         </form>
                         <button
                             id="stop-btn-{{ site.site_name }}"
-                            class="btn-stop"
-                            style="display:none;flex:1"
+                            class="pcard-btn pcard-btn--stop"
+                            style="display:none"
                             onclick="stopSite('{{ site.site_name }}')"
-                            title="Detener proceso y borrar plazas pendientes">
-                            ⏹ Detener
+                            title="Detener y limpiar pendientes">
+                            <span>⏹</span> Detener
                         </button>
+                        <form method="post" action="/reintentar-rechazados" style="margin:0;flex:1">
+                            <input type="hidden" name="site" value="{{ site.site_name }}">
+                            <input type="hidden" name="profile_id" value="{{ active_pid }}">
+                            <button type="submit" class="pcard-btn pcard-btn--retry" title="Reintentar rechazados">
+                                <span>🔄</span> Reintentar
+                            </button>
+                        </form>
                     </div>
-
-                    <!-- Reintentar rechazados de este portal -->
-                    <form method="post" action="/reintentar-rechazados" style="margin-top:.5rem">
-                        <input type="hidden" name="site" value="{{ site.site_name }}">
-                        <input type="hidden" name="profile_id" value="{{ active_pid }}">
-                        <button type="submit" class="btn-retry" style="font-size:.75rem;padding:5px 10px;width:100%">
-                            🔄 Reintentar Rechazados
-                        </button>
-                    </form>
 
                 </div>
                 {% endfor %}
             </div>
 
-            <!-- Acciones globales -->
-            <div class="portal-global-actions">
-                <button type="submit" class="btn btn-apply">🔒 Guardar Credenciales</button>
+            <!-- Barra de acciones global -->
+            <div class="portales-global-bar">
+                <button type="submit" class="btn btn-apply portales-save-btn">
+                    🔒 Guardar Credenciales
+                </button>
                 <form method="post" action="/reintentar-rechazados" style="margin:0">
                     <input type="hidden" name="profile_id" value="{{ active_pid }}">
-                    <button type="submit" class="btn-retry btn-retry-all">
-                        🔄 Reintentar Todos los Rechazados ({{ active_profile.name.split()[0] }})
+                    <button type="submit" class="portales-retry-all-btn">
+                        🔄 Reintentar todos los rechazados
                     </button>
                 </form>
             </div>
