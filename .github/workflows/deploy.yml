@@ -30,7 +30,7 @@ jobs:
             source venv/bin/activate
             pip install -r requirements.txt
             echo "🌐 Instalando navegadores de Playwright (chromium + firefox)..."
-            python3 -m playwright install chromium firefox
+            venv/bin/python3 -m playwright install chromium firefox
           fi
           
           echo "🔄 Reiniciando servicio PM2..."
