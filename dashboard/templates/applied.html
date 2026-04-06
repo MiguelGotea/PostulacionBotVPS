@@ -1,33 +1,29 @@
 {% extends "base.html" %}
 
-{% block title %}Katty Jobs — Postulaciones{% endblock %}
+{% block title %}Jobs Dashboard — Postulaciones{% endblock %}
 
 {% block content %}
 <div class="content-header">
     <h1>Postulaciones</h1>
-    <p>Vista completa: cola de espera, historial y rechazados.</p>
+    <p>Vista completa: cola de espera, historial y rechazados de todos los candidatos.</p>
 </div>
 
 {% if request.query_params.get('msg') %}
 <div class="alert-success">✅ {{ request.query_params.get('msg')|replace('+', ' ') }}</div>
 {% endif %}
 
-<div class="action-bar">
-    <form method="post" action="/reintentar-rechazados" style="display:inline">
-        <input type="hidden" name="site" value="tecoloco">
-        <button type="submit" class="btn-retry">🔄 Reintentar Rechazados (Tecoloco)</button>
-    </form>
-    <form method="post" action="/reintentar-rechazados" style="display:inline">
-        <button type="submit" class="btn-retry btn-retry-all">🔄 Reintentar Todos los Rechazados</button>
-    </form>
-    <span id="row-count" style="margin-left:1rem;font-size:.85rem;color:#666"></span>
-</div>
-
 <!-- Filtros -->
 <div class="filters-bar" style="gap:.75rem;flex-wrap:wrap;margin-bottom:1rem">
-    <input id="f-title"    type="text"   placeholder="🔍 Puesto..."   oninput="filterTable()" class="form-input" style="width:160px">
-    <input id="f-company"  type="text"   placeholder="🏢 Empresa..."  oninput="filterTable()" class="form-input" style="width:150px">
-    <select id="f-dept"    onchange="filterTable()" class="form-input" style="width:140px">
+    <!-- Filtro de candidato -->
+    <select id="f-candidate" onchange="filterByCandidate(this.value)" class="form-input" style="width:175px">
+        <option value="">👤 Candidato (todos)</option>
+        {% for p in profiles %}
+        <option value="{{ p.id }}" {% if active_profile_id == p.id %}selected{% endif %}>{{ p.name.split()[0] }} {{ p.name.split()[1] if p.name.split()|length > 1 else '' }}</option>
+        {% endfor %}
+    </select>
+    <input id="f-title"   type="text" placeholder="🔍 Puesto..."   oninput="filterTable()" class="form-input" style="width:160px">
+    <input id="f-company" type="text" placeholder="🏢 Empresa..."  oninput="filterTable()" class="form-input" style="width:150px">
+    <select id="f-dept"   onchange="filterTable()" class="form-input" style="width:140px">
         <option value="">📍 Dpto. (todos)</option>
         <option>Managua</option><option>León</option><option>Masaya</option>
         <option>Chinandega</option><option>Granada</option><option>Estelí</option>
@@ -51,6 +47,7 @@
         <option value="failed">❌ Fallido</option>
     </select>
     <button onclick="clearFilters()" class="btn-scan" style="padding:.45rem .9rem">✖ Limpiar</button>
+    <span id="row-count" style="margin-left:.5rem;font-size:.85rem;color:#666"></span>
 </div>
 
 <div class="table-container">
@@ -58,6 +55,7 @@
         <thead>
             <tr>
                 <th>Fecha</th>
+                <th>Candidato</th>
                 <th>Puesto</th>
                 <th>Empresa</th>
                 <th>Dpto.</th>
@@ -75,9 +73,13 @@
                 data-dept="{{ (job.location or '').split(',')[0]|lower }}"
                 data-site="{{ (job.site or '')|lower }}"
                 data-status="{{ job.status or '' }}"
+                data-profile="{{ job.profile_id or '' }}"
             >
                 <td style="white-space:nowrap;font-size:.8rem">
                     {{ (job.date_applied or job.date_found or '')[:16] }}
+                </td>
+                <td style="font-size:.8rem;max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ job.candidate_name or '—' }}">
+                    <span class="candidate-chip">{{ (job.candidate_name or 'N/A').split()[0] }}</span>
                 </td>
                 <td>{{ job.title }}</td>
                 <td>{{ job.company }}</td>
@@ -107,13 +109,21 @@
                 </td>
             </tr>
             {% else %}
-            <tr><td colspan="8" class="no-results">No hay registros.</td></tr>
+            <tr><td colspan="9" class="no-results">No hay registros.</td></tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
 
 <script>
+function filterByCandidate(profileId) {
+    if (profileId) {
+        window.location.href = '/applied?profile_id=' + profileId;
+    } else {
+        window.location.href = '/applied';
+    }
+}
+
 function filterTable() {
     const title   = document.getElementById('f-title').value.toLowerCase();
     const company = document.getElementById('f-company').value.toLowerCase();

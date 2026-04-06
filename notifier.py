@@ -6,20 +6,29 @@ from config import EMAIL_CONFIG
 
 logger = logging.getLogger(__name__)
 
-async def send_summary(applied_jobs: list, manual_jobs: list, stats: dict):
-    """Envía un resumen por email con las postulaciones y nuevas ofertas manuales."""
+async def send_summary(
+    applied_jobs: list,
+    manual_jobs: list,
+    stats: dict,
+    recipient_email: str = "",
+    candidate_name: str = "Candidato"
+):
+    """Envía un resumen por email con las postulaciones del candidato."""
     
-    if not EMAIL_CONFIG['sender_email'] or not EMAIL_CONFIG['sender_password']:
+    if not EMAIL_CONFIG.get('sender_email') or not EMAIL_CONFIG.get('sender_password'):
         logger.warning("Configuración de email incompleta. Saltando envío de resumen.")
+        return
+    
+    if not recipient_email:
+        logger.warning(f"Sin correo de notificación para '{candidate_name}'. Saltando.")
         return
 
     now = datetime.now().strftime("%d/%m/%Y %H:%M")
     
-    # Construir el HTML
     html_content = f"""
     <html>
     <body style="font-family: Arial, sans-serif; color: #333;">
-        <h2 style="color: #1A5276;">Katty Jobs — Resumen de Actividad ({now})</h2>
+        <h2 style="color: #1A5276;">Jobs Dashboard — Resumen de {candidate_name} ({now})</h2>
         
         <p>Se han realizado <strong>{len(applied_jobs)}</strong> postulaciones automáticas exitosas en este ciclo.</p>
         
@@ -69,18 +78,17 @@ async def send_summary(applied_jobs: list, manual_jobs: list, stats: dict):
         
         <hr style="margin-top: 30px;">
         <p style="font-size: 0.9em; color: #777;">
-            Estadísticas del ciclo: Encontrados: {stats.get('found', 0)} | Errores: {stats.get('errors', 0)}<br>
-            Ver dashboard completo en: <a href="http://{stats.get('vps_ip', 'IP')}:8765">Katty Jobs Dashboard</a>
+            Estadísticas del ciclo: Encontrados: {stats.get('found', 0)} | Candidato: {candidate_name}<br>
+            Ver dashboard completo en: <a href="http://{stats.get('vps_ip', 'IP')}:8765">Jobs Dashboard</a>
         </p>
     </body>
     </html>
     """
 
-    # Configurar el mensaje
     msg = EmailMessage()
-    msg["Subject"] = f"Katty Jobs — {len(applied_jobs)} postulaciones | {now}"
+    msg["Subject"] = f"Jobs — {candidate_name}: {len(applied_jobs)} postulaciones | {now}"
     msg["From"] = EMAIL_CONFIG['sender_email']
-    msg["To"] = EMAIL_CONFIG['recipient_email']
+    msg["To"] = recipient_email
     msg.set_content("Este correo requiere visualización HTML.")
     msg.add_alternative(html_content, subtype="html")
 
@@ -94,6 +102,6 @@ async def send_summary(applied_jobs: list, manual_jobs: list, stats: dict):
             use_tls=False,
             start_tls=True
         )
-        logger.info(f"Resumen enviado correctamente a {EMAIL_CONFIG['recipient_email']}")
+        logger.info(f"Resumen '{candidate_name}' enviado a {recipient_email}")
     except Exception as e:
-        logger.error(f"Error enviando email de resumen: {e}")
+        logger.error(f"Error enviando email para '{candidate_name}': {e}")

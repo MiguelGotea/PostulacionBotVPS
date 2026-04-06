@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from poster.base import BasePoster
-from config import CREDENTIALS, PLAYWRIGHT_TIMEOUT
+from config import PLAYWRIGHT_TIMEOUT
 
 logger = logging.getLogger(__name__)
 

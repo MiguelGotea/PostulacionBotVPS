@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}Katty Jobs — Panel de Control{% endblock %}
+{% block title %}Jobs Dashboard — Panel de Control{% endblock %}
 
 {% block content %}
 <div class="content-header">
     <h1>Panel de Control</h1>
-    <p>Estadísticas globales del sistema y acciones de mantenimiento.</p>
+    <p>Estadísticas globales del sistema por candidato y portal.</p>
 </div>
 
 {% if request.query_params.get('msg') %}
@@ -14,14 +14,20 @@
 </div>
 {% endif %}
 
-<div class="settings-grid">
+<div class="settings-grid" style="grid-template-columns:1fr">
 
-    <!-- ── Estadísticas por Sitio ── -->
+    <!-- ── Estadísticas por Candidato × Sitio ── -->
     <div class="settings-card stats-summary">
-        <h3>📊 Estadísticas por Sitio</h3>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+            <h3 style="margin-bottom:0">📊 Estadísticas por Candidato y Sitio</h3>
+            <form action="/settings/scan-all" method="post" style="display:inline">
+                <button type="submit" class="btn-scan">🔍 Escanear Todos los Portales</button>
+            </form>
+        </div>
         <table class="simple-table">
             <thead>
                 <tr>
+                    <th>Candidato</th>
                     <th>Sitio</th>
                     <th>Encontrados</th>
                     <th>✅ Aplicados</th>
@@ -31,27 +37,47 @@
                 </tr>
             </thead>
             <tbody>
+                {% set current_candidate = namespace(name='') %}
                 {% for row in stats %}
-                <tr>
+                <tr {% if row.candidate_name != current_candidate.name %}class="row-new-candidate"{% endif %}>
+                    <td>
+                        {% if row.candidate_name != current_candidate.name %}
+                            {% set current_candidate.name = row.candidate_name %}
+                            <strong>{{ row.candidate_name or '(sin perfil)' }}</strong>
+                        {% else %}
+                            <span style="color:#aaa;font-size:.8rem">↳</span>
+                        {% endif %}
+                    </td>
                     <td><span class="site-badge badge-{{ row.site|lower }}">{{ row.site }}</span></td>
                     <td>{{ row.total }}</td>
-                    <td>{{ row.applied or 0 }}</td>
+                    <td><strong style="color:#27ae60">{{ row.applied or 0 }}</strong></td>
                     <td>{{ row.no_cumple or 0 }}</td>
                     <td>{{ row.dpto_filtrado or 0 }}</td>
                     <td>{{ row.failed or 0 }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
+            {% if totals %}
+            <tfoot>
+                <tr class="totals-row">
+                    <td colspan="2"><strong>🌐 TOTAL GLOBAL</strong></td>
+                    <td><strong>{{ totals.total }}</strong></td>
+                    <td><strong style="color:#27ae60">{{ totals.applied or 0 }}</strong></td>
+                    <td><strong>{{ totals.no_cumple or 0 }}</strong></td>
+                    <td><strong>{{ totals.dpto_filtrado or 0 }}</strong></td>
+                    <td><strong>{{ totals.failed or 0 }}</strong></td>
+                </tr>
+            </tfoot>
+            {% endif %}
         </table>
     </div>
 
-    <!-- ── Escaneo Global ── -->
+    <!-- ── Mantenimiento ── -->
     <div class="settings-card">
-        <h3>🔍 Escaneo Global</h3>
-        <p>Dispara un escaneo inmediato en todos los portales activos para todos los candidatos.</p>
-        <div class="control-actions">
-            <form action="/settings/scan-all" method="post" style="display:inline">
-                <button type="submit" class="btn-scan">🔍 Escanear Todos los Portales</button>
+        <h3>🛠 Mantenimiento</h3>
+        <div class="control-actions" style="display:flex;gap:.75rem;flex-wrap:wrap">
+            <form action="/settings/cleanup-invalid" method="post" style="display:inline">
+                <button type="submit" class="btn-scan">🧹 Limpiar URLs inválidas (Tecoloco)</button>
             </form>
         </div>
     </div>

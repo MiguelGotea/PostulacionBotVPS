@@ -17,6 +17,7 @@ async def init_db():
         await db.execute("""
             CREATE TABLE IF NOT EXISTS jobs (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                profile_id INTEGER DEFAULT 1,
                 title TEXT NOT NULL,
                 company TEXT,
                 location TEXT,
@@ -31,11 +32,20 @@ async def init_db():
                 error_message TEXT
             )
         """)
-        
+
+        # Migración: agregar profile_id si no existe (para DB existentes)
+        try:
+            await db.execute("ALTER TABLE jobs ADD COLUMN profile_id INTEGER DEFAULT 1")
+            await db.execute("UPDATE jobs SET profile_id = 1 WHERE profile_id IS NULL")
+            logger.info("Migración: columna profile_id agregada a jobs.")
+        except Exception:
+            pass  # Ya existe
+
         # Tabla de logs de escaneo
         await db.execute("""
             CREATE TABLE IF NOT EXISTS scan_log (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
+                profile_id INTEGER DEFAULT 1,
                 scan_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 site TEXT,
                 jobs_found INTEGER DEFAULT 0,
@@ -43,8 +53,12 @@ async def init_db():
                 errors TEXT
             )
         """)
+        try:
+            await db.execute("ALTER TABLE scan_log ADD COLUMN profile_id INTEGER DEFAULT 1")
+        except Exception:
+            pass
 
-        # Tabla de configuración de sitios (habilitar/deshabilitar)
+        # Tabla de configuración de sitios habilitados (global)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS site_configs (
                 site_name TEXT PRIMARY KEY,
@@ -63,7 +77,7 @@ async def init_db():
                 VALUES (?, 1)
             """, (site,))
         
-        # Tabla de configuración de aplicaciones (Salario, etc.)
+        # Tabla de configuración de aplicaciones (Salario, etc.) - legacy
         await db.execute("""
             CREATE TABLE IF NOT EXISTS app_settings (
                 key TEXT PRIMARY KEY,
@@ -102,16 +116,23 @@ async def init_db():
                 availability TEXT,
                 about TEXT,
                 applied_sites TEXT DEFAULT 'all',
+                notification_email TEXT,
                 created_at TEXT DEFAULT (datetime('now', '-6 hours'))
             )
         """)
+        # Migración: agregar notification_email a candidatos existentes
+        try:
+            await db.execute("ALTER TABLE candidate_profiles ADD COLUMN notification_email TEXT")
+        except Exception:
+            pass
 
-        # Semilla: perfil de Katty Valentina Coleman
+        # Semilla: perfil de Katty Valentina Coleman (id=1)
         await db.execute("""
             INSERT OR IGNORE INTO candidate_profiles
             (id, name, email, phone, location, birth_date, civil_status, address,
-             education, experience, skills, languages, salary_expectation, availability, about, applied_sites)
-            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'all')
+             education, experience, skills, languages, salary_expectation, availability, about,
+             applied_sites, notification_email)
+            VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'all', ?)
         """, (
             "Katty Valentina Coleman Antonio",
             "kmolly220@gmail.com",
@@ -136,7 +157,41 @@ async def init_db():
             "acelerado. Estudiante activa de Marketing en la Universidad Central de Nicaragua. "
             "Me caracterizo por mi actitud proactiva, puntualidad y capacidad para adaptarme "
             "rápidamente a diferentes ambientes de trabajo.",
+            "kmolly220@gmail.com",  # notification_email
         ))
+
+        # ─── Credenciales por perfil y portal ──────────────────────────────
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS profile_credentials (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                profile_id INTEGER NOT NULL,
+                site_name TEXT NOT NULL,
+                email TEXT NOT NULL DEFAULT '',
+                password TEXT NOT NULL DEFAULT '',
+                UNIQUE(profile_id, site_name),
+                FOREIGN KEY (profile_id) REFERENCES candidate_profiles(id) ON DELETE CASCADE
+            )
+        """)
+
+        # Semilla: credenciales actuales de Katty (profile_id=1)
+        katty_sites = [
+            'tecoloco', 'computrabajo', 'opcionempleo',
+            'acciontrabajo', 'encuentra24', 'linkedin'
+        ]
+        katty_creds = {
+            'tecoloco':     ('kmolly220@gmail.com', 'KattyColeman0003'),
+            'computrabajo': ('kmolly220@gmail.com', 'KattyColeman003'),
+            'opcionempleo': ('kmolly220@gmail.com', 'KattyColeman0003'),
+            'acciontrabajo':('kmolly220@gmail.com', 'KattyColeman003'),
+            'encuentra24':  ('kmolly220@gmail.com', 'KattyColeman0003'),
+            'linkedin':     ('kmolly220@gmail.com', 'KattyColeman003'),
+        }
+        for site in katty_sites:
+            email, pwd = katty_creds.get(site, ('', ''))
+            await db.execute("""
+                INSERT OR IGNORE INTO profile_credentials (profile_id, site_name, email, password)
+                VALUES (1, ?, ?, ?)
+            """, (site, email, pwd))
 
         # Tabla de keywords por candidato
         await db.execute("""
@@ -162,16 +217,24 @@ async def init_db():
                 )
             """, (kw, kw))
 
-        # Tabla de cookies de sesión (inyectadas desde navegador local)
+        # Tabla de cookies de sesión (por perfil + sitio)
         await db.execute("""
             CREATE TABLE IF NOT EXISTS session_cookies (
                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                site       TEXT UNIQUE NOT NULL,
+                profile_id INTEGER DEFAULT 1,
+                site       TEXT NOT NULL,
                 cookies    TEXT NOT NULL,
                 updated_at TEXT DEFAULT (datetime('now', '-6 hours')),
-                note       TEXT
+                note       TEXT,
+                UNIQUE(profile_id, site)
             )
         """)
+        # Migración: agregar profile_id a session_cookies existentes
+        try:
+            await db.execute("ALTER TABLE session_cookies ADD COLUMN profile_id INTEGER DEFAULT 1")
+            # Reconstruir UNIQUE si es necesario (SQLite no permite ALTER UNIQUE, ignorar)
+        except Exception:
+            pass
 
         # ── Departamentos de Nicaragua ──────────────────────────────────
         await db.execute("""

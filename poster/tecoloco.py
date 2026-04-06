@@ -18,7 +18,7 @@ import aiosqlite
 
 from poster.base import BasePoster
 from poster.ai_responder import answer_questions
-from config import CREDENTIALS, PLAYWRIGHT_TIMEOUT, DB_PATH
+from config import PLAYWRIGHT_TIMEOUT, DB_PATH
 
 logger = logging.getLogger(__name__)
 
@@ -322,7 +322,21 @@ class TecolocoPoster(BasePoster):
             (False, 'no_cumple: X') → No cumple requisitos
             (False, 'mensaje')       → Fallo técnico
         """
-        creds = credentials or CREDENTIALS.get('tecoloco', {})
+        creds = credentials or {}
+        # Si no se pasaron credenciales, intentar obtenerlas de la DB
+        if not creds.get('email'):
+            # Intentar obtener del job el profile_id
+            profile_id_for_creds = 1
+            if job_db_id:
+                try:
+                    async with aiosqlite.connect(DB_PATH) as _db:
+                        async with _db.execute("SELECT profile_id FROM jobs WHERE id=?", (job_db_id,)) as _c:
+                            _r = await _c.fetchone()
+                            if _r and _r[0]:
+                                profile_id_for_creds = _r[0]
+                except Exception:
+                    pass
+            creds = await self.get_credentials_from_db(profile_id_for_creds, 'tecoloco')
 
         try:
             logger.info(f"[{self.site_name}] Aplicando a: {job_url}")
@@ -562,4 +576,5 @@ class TecolocoPoster(BasePoster):
         return False
 
     async def login_once(self, page, credentials=None) -> bool:
-        return await self.login(page, credentials or CREDENTIALS.get('tecoloco', {}))
+        creds = credentials or {}
+        return await self.login(page, creds)

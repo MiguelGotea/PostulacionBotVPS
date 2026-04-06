@@ -2,13 +2,13 @@ import asyncio
 import logging
 import urllib.parse
 from scrapers.base import BaseScraper
-from config import KEYWORDS, PLAYWRIGHT_TIMEOUT
+from config import PLAYWRIGHT_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
 class LinkedinScraper(BaseScraper):
-    def __init__(self):
-        super().__init__("linkedin")
+    def __init__(self, profile_id: int = 1):
+        super().__init__("linkedin", profile_id)
         self.base_url = "https://www.linkedin.com/jobs/search/"
 
     async def scrape(self, playwright) -> list[dict]:
@@ -18,7 +18,7 @@ class LinkedinScraper(BaseScraper):
         page.set_default_timeout(PLAYWRIGHT_TIMEOUT)
 
         try:
-            for keyword in KEYWORDS:
+            for keyword in await self._get_keywords():
                 # URL: https://www.linkedin.com/jobs/search/?location=Nicaragua&keywords={keyword}
                 query = urllib.parse.quote(keyword)
                 search_url = f"{self.base_url}?location=Nicaragua&keywords={query}"

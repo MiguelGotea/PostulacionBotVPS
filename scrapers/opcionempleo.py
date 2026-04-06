@@ -2,13 +2,13 @@ import asyncio
 import logging
 import urllib.parse
 from scrapers.base import BaseScraper
-from config import KEYWORDS, PLAYWRIGHT_TIMEOUT
+from config import PLAYWRIGHT_TIMEOUT
 
 logger = logging.getLogger(__name__)
 
 class OpcionempleoScraper(BaseScraper):
-    def __init__(self):
-        super().__init__("opcionempleo")
+    def __init__(self, profile_id: int = 1):
+        super().__init__("opcionempleo", profile_id)
         self.base_url = "https://www.opcionempleo.com.ni/"
 
     async def scrape(self, playwright) -> list[dict]:
@@ -18,7 +18,7 @@ class OpcionempleoScraper(BaseScraper):
         page.set_default_timeout(PLAYWRIGHT_TIMEOUT)
 
         try:
-            for keyword in KEYWORDS:
+            for keyword in await self._get_keywords():
                 # Ordenar por fecha para obtener los más recientes arriba
                 query = urllib.parse.quote(keyword)
                 # Opcionempleo: sort=date para prioridad cronológica

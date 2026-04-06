@@ -99,17 +99,46 @@ class BasePoster(abc.ABC):
         """)
         return browser, context
 
-    async def get_candidate_profile(self) -> dict:
-        """Obtiene el perfil activo del candidato desde la DB."""
+    async def get_candidate_profile(self, profile_id: int = None) -> dict:
+        """
+        Obtiene el perfil de candidato desde la DB.
+        Si profile_id es None, obtiene el primero activo.
+        """
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                db.row_factory = aiosqlite.Row
+                if profile_id:
+                    async with db.execute(
+                        "SELECT * FROM candidate_profiles WHERE id = ?", (profile_id,)
+                    ) as cursor:
+                        row = await cursor.fetchone()
+                else:
+                    async with db.execute(
+                        "SELECT * FROM candidate_profiles WHERE is_active = 1 ORDER BY id LIMIT 1"
+                    ) as cursor:
+                        row = await cursor.fetchone()
+                if row:
+                    return dict(row)
+        except Exception as e:
+            logger.error(f"Error obteniendo candidate_profile: {e}")
+        return {}
+
+    async def get_credentials_from_db(self, profile_id: int, site: str = None) -> dict:
+        """
+        Obtiene las credenciales (email, password) de un candidato para un portal.
+        Busca en la tabla profile_credentials.
+        """
+        site_name = site or self.site_name
         try:
             async with aiosqlite.connect(self.db_path) as db:
                 db.row_factory = aiosqlite.Row
                 async with db.execute(
-                    "SELECT * FROM candidate_profiles WHERE is_active = 1 ORDER BY id LIMIT 1"
+                    "SELECT email, password FROM profile_credentials WHERE profile_id = ? AND site_name = ?",
+                    (profile_id, site_name)
                 ) as cursor:
                     row = await cursor.fetchone()
                     if row:
-                        return dict(row)
+                        return {"email": row["email"], "password": row["password"]}
         except Exception as e:
-            logger.error(f"Error obteniendo candidate_profile: {e}")
+            logger.error(f"Error obteniendo credenciales para perfil {profile_id}/{site_name}: {e}")
         return {}

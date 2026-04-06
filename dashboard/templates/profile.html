@@ -1,39 +1,81 @@
 {% extends "base.html" %}
 
-{% block title %}Katty Jobs — Candidatos{% endblock %}
+{% block title %}Jobs Dashboard — Candidatos{% endblock %}
 
 {% block content %}
 <div class="content-header">
-    <h1>Perfiles de Candidatos</h1>
-    <p>Gestiona los datos de los candidatos usados para las postulaciones automáticas.</p>
+    <div style="display:flex;align-items:center;justify-content:space-between">
+        <div>
+            <h1>Perfiles de Candidatos</h1>
+            <p>Gestiona los datos, keywords, portales y credenciales de cada candidato de forma independiente.</p>
+        </div>
+        <form method="post" action="/profile/create">
+            <button type="submit" class="btn btn-new-candidate">➕ Nuevo Candidato</button>
+        </form>
+    </div>
 </div>
 
 {% if request.query_params.get('msg') %}
 <div class="alert alert-success">✅ {{ request.query_params.get('msg')|replace('+', ' ') }}</div>
 {% endif %}
 
-{% for profile in profiles %}
+{% if not profiles %}
+<div class="empty-state">
+    <p>No hay perfiles de candidatos registrados. Crea el primero.</p>
+</div>
+{% else %}
+
+<!-- ── Tabs de candidatos ── -->
+<div class="candidate-tabs">
+    {% for profile in profiles %}
+    <a href="/profile?pid={{ profile.id }}"
+       class="candidate-tab {% if profile.id == active_pid %}active{% endif %}"
+       id="tab-{{ profile.id }}">
+        <span class="tab-avatar">{{ profile.name[0] }}</span>
+        <span class="tab-name">{{ profile.name.split()[0] }}</span>
+        {% if profile.is_active %}
+            <span class="tab-dot active-dot" title="Activo"></span>
+        {% else %}
+            <span class="tab-dot inactive-dot" title="Inactivo"></span>
+        {% endif %}
+    </a>
+    {% endfor %}
+</div>
+
+<!-- ── Panel del candidato activo ── -->
+{% if active_profile %}
 <div class="profile-card">
+    <!-- ── Header del perfil ── -->
     <div class="profile-card-header">
         <div class="profile-identity">
-            <div class="profile-avatar">{{ profile.name[0] }}</div>
+            <div class="profile-avatar">{{ active_profile.name[0] }}</div>
             <div>
-                <h2 class="profile-name">{{ profile.name }}</h2>
-                <span class="profile-meta">{{ profile.email }} · {{ profile.phone }}</span>
+                <h2 class="profile-name">{{ active_profile.name }}</h2>
+                <span class="profile-meta">{{ active_profile.email or '—' }} · {{ active_profile.phone or '—' }}</span>
             </div>
         </div>
         <div class="profile-badges">
-            {% if profile.is_active %}
+            {% if active_profile.is_active %}
                 <span class="status-badge status-applied">Activo</span>
             {% else %}
                 <span class="status-badge status-failed">Inactivo</span>
             {% endif %}
-            <span class="site-badge badge-tecoloco">{{ profile.applied_sites }}</span>
+            <span class="site-badge badge-tecoloco">{{ active_profile.applied_sites }}</span>
+            <!-- Botón subir CV -->
+            <button type="button" class="btn btn-cv-upload" id="btnOpenCvModal" onclick="openCvModal()">
+                📄 Subir CV (IA)
+            </button>
+            <!-- Botón eliminar candidato -->
+            <form method="post" action="/profile/delete/{{ active_profile.id }}"
+                  onsubmit="return confirm('¿Eliminar a {{ active_profile.name }}? Esto es irreversible.')">
+                <button type="submit" class="btn btn-danger-outline">🗑 Eliminar</button>
+            </form>
         </div>
     </div>
 
-    <form method="post" action="/profile/update/{{ profile.id }}" class="profile-form">
-        <input type="hidden" name="is_active" value="{{ profile.is_active }}">
+    <!-- ── Formulario de datos del perfil ── -->
+    <form method="post" action="/profile/update/{{ active_profile.id }}" class="profile-form" id="profileForm-{{ active_profile.id }}">
+        <input type="hidden" name="is_active" value="{{ active_profile.is_active }}">
 
         <div class="profile-grid">
 
@@ -42,52 +84,58 @@
                 <h3>📋 Datos Personales</h3>
                 <div class="form-group">
                     <label>Nombre completo</label>
-                    <input class="form-input" type="text" name="name" value="{{ profile.name or '' }}" required>
+                    <input class="form-input" type="text" name="name" id="field-name" value="{{ active_profile.name or '' }}" required>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label>Teléfono</label>
-                        <input class="form-input" type="text" name="phone" value="{{ profile.phone or '' }}">
+                        <input class="form-input" type="text" name="phone" id="field-phone" value="{{ active_profile.phone or '' }}">
                     </div>
                     <div class="form-group">
                         <label>Ubicación</label>
-                        <input class="form-input" type="text" name="location" value="{{ profile.location or '' }}">
+                        <input class="form-input" type="text" name="location" id="field-location" value="{{ active_profile.location or '' }}">
                     </div>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label>Fecha de nacimiento</label>
-                        <input class="form-input" type="text" name="birth_date" value="{{ profile.birth_date or '' }}">
+                        <input class="form-input" type="text" name="birth_date" id="field-birth_date" value="{{ active_profile.birth_date or '' }}">
                     </div>
                     <div class="form-group">
                         <label>Estado civil</label>
-                        <input class="form-input" type="text" name="civil_status" value="{{ profile.civil_status or '' }}">
+                        <input class="form-input" type="text" name="civil_status" id="field-civil_status" value="{{ active_profile.civil_status or '' }}">
                     </div>
                 </div>
                 <div class="form-group">
                     <label>Dirección</label>
-                    <input class="form-input" type="text" name="address" value="{{ profile.address or '' }}">
+                    <input class="form-input" type="text" name="address" id="field-address" value="{{ active_profile.address or '' }}">
                 </div>
                 <div class="form-row">
                     <div class="form-group">
                         <label>Expectativa salarial</label>
-                        <input class="form-input" type="text" name="salary_expectation" value="{{ profile.salary_expectation or '' }}">
+                        <input class="form-input" type="text" name="salary_expectation" id="field-salary_expectation" value="{{ active_profile.salary_expectation or '' }}">
                     </div>
                     <div class="form-group">
                         <label>Disponibilidad</label>
-                        <input class="form-input" type="text" name="availability" value="{{ profile.availability or '' }}">
+                        <input class="form-input" type="text" name="availability" id="field-availability" value="{{ active_profile.availability or '' }}">
                     </div>
                 </div>
                 <div class="form-group">
                     <label>Idiomas</label>
-                    <input class="form-input" type="text" name="languages" value="{{ profile.languages or '' }}">
+                    <input class="form-input" type="text" name="languages" id="field-languages" value="{{ active_profile.languages or '' }}">
+                </div>
+                <div class="form-group">
+                    <label>Correo de notificaciones</label>
+                    <input class="form-input" type="email" name="notification_email" id="field-notification_email"
+                           value="{{ active_profile.notification_email or '' }}"
+                           placeholder="correo@ejemplo.com">
                 </div>
                 <div class="form-group">
                     <label>Sitios donde aplica</label>
                     <select class="form-input" name="applied_sites">
-                        <option value="all" {% if profile.applied_sites == 'all' %}selected{% endif %}>Todos los portales</option>
-                        <option value="tecoloco" {% if profile.applied_sites == 'tecoloco' %}selected{% endif %}>Solo Tecoloco</option>
-                        <option value="computrabajo" {% if profile.applied_sites == 'computrabajo' %}selected{% endif %}>Solo Computrabajo</option>
+                        <option value="all" {% if active_profile.applied_sites == 'all' %}selected{% endif %}>Todos los portales</option>
+                        <option value="tecoloco" {% if active_profile.applied_sites == 'tecoloco' %}selected{% endif %}>Solo Tecoloco</option>
+                        <option value="computrabajo" {% if active_profile.applied_sites == 'computrabajo' %}selected{% endif %}>Solo Computrabajo</option>
                     </select>
                 </div>
             </div>
@@ -97,21 +145,20 @@
                 <h3>🎓 Formación y Experiencia</h3>
                 <div class="form-group">
                     <label>Perfil profesional / Sobre mí</label>
-                    <textarea class="form-input form-textarea" name="about" rows="4">{{ profile.about or '' }}</textarea>
+                    <textarea class="form-input form-textarea" name="about" id="field-about" rows="4">{{ active_profile.about or '' }}</textarea>
                 </div>
                 <div class="form-group">
                     <label>Educación</label>
-                    <textarea class="form-input form-textarea" name="education" rows="3">{{ profile.education or '' }}</textarea>
+                    <textarea class="form-input form-textarea" name="education" id="field-education" rows="3">{{ active_profile.education or '' }}</textarea>
                 </div>
                 <div class="form-group">
                     <label>Experiencia laboral</label>
-                    <textarea class="form-input form-textarea" name="experience" rows="5">{{ profile.experience or '' }}</textarea>
+                    <textarea class="form-input form-textarea" name="experience" id="field-experience" rows="5">{{ active_profile.experience or '' }}</textarea>
                 </div>
                 <div class="form-group">
                     <label>Habilidades</label>
-                    <textarea class="form-input form-textarea" name="skills" rows="3">{{ profile.skills or '' }}</textarea>
+                    <textarea class="form-input form-textarea" name="skills" id="field-skills" rows="3">{{ active_profile.skills or '' }}</textarea>
                 </div>
-
                 <div class="profile-actions">
                     <button type="submit" class="btn btn-apply">💾 Guardar Cambios</button>
                 </div>
@@ -123,12 +170,12 @@
     <!-- ── Keywords de búsqueda ── -->
     <div class="keywords-section">
         <h3>🔍 Keywords de Búsqueda</h3>
-        <p class="keywords-desc">Estas palabras definen qué empleos busca el bot para este candidato. Haz clic para activar o desactivar.</p>
-
+        <p class="keywords-desc">Palabras clave que definen qué empleos busca el bot para este candidato. Haz clic para activar/desactivar.</p>
         <div class="keywords-grid">
-            {% for kw in profile_keywords.get(profile.id, []) %}
+            {% for kw in profile_keywords %}
             <div class="keyword-item {% if kw.is_enabled %}active{% endif %}">
                 <form method="post" action="/profile/keywords/{{ kw.id }}/toggle" style="display:inline">
+                    <input type="hidden" name="pid" value="{{ active_pid }}">
                     <button type="submit" class="keyword-pill {% if kw.is_enabled %}kw-on{% else %}kw-off{% endif %}">
                         {% if kw.is_enabled %}✅{% else %}⏸{% endif %}
                         #{{ kw.keyword }}
@@ -136,14 +183,13 @@
                 </form>
                 <form method="post" action="/profile/keywords/{{ kw.id }}/delete" style="display:inline"
                       onsubmit="return confirm('¿Eliminar keyword #{{ kw.keyword }}?')">
+                    <input type="hidden" name="pid" value="{{ active_pid }}">
                     <button type="submit" class="kw-delete" title="Eliminar">✕</button>
                 </form>
             </div>
             {% endfor %}
         </div>
-
-        <!-- Agregar nueva keyword -->
-        <form method="post" action="/profile/{{ profile.id }}/keywords/add" class="kw-add-form">
+        <form method="post" action="/profile/{{ active_pid }}/keywords/add" class="kw-add-form">
             <input class="form-input kw-add-input" type="text" name="keyword"
                    placeholder="nueva keyword... (ej: cajera)" required maxlength="80">
             <button type="submit" class="btn btn-apply kw-add-btn">+ Agregar</button>
@@ -151,17 +197,15 @@
     </div>
 
     <!-- ── Departamentos permitidos ── -->
-    <div class="keywords-section" style="margin-top:1.5rem">
+    <div class="keywords-section" style="margin-top:0">
         <h3>📍 Departamentos Permitidos</h3>
         <p class="keywords-desc">
             El bot solo aplicará a ofertas en los departamentos seleccionados.
-            Si la oferta dice solo "Nicaragua" (sin departamento) se descartará automáticamente.
-            Usa <strong>Reintentar Rechazados</strong> para volver a intentar las ofertas filtradas.
+            Si la oferta dice solo "Nicaragua" sin departamento se descartará automáticamente.
         </p>
-
         <div class="keywords-grid">
-            {% for dept in profile_departments.get(profile.id, []) %}
-            <form method="post" action="/profile/departments/{{ profile.id }}/{{ dept.department }}/toggle" style="display:inline">
+            {% for dept in profile_departments %}
+            <form method="post" action="/profile/departments/{{ active_pid }}/{{ dept.department }}/toggle" style="display:inline">
                 <button type="submit" class="keyword-pill {% if dept.is_enabled %}kw-on{% else %}kw-off{% endif %}">
                     {% if dept.is_enabled %}📍{% else %}🚫{% endif %}
                     {{ dept.department }}
@@ -171,44 +215,262 @@
         </div>
     </div>
 
-</div>
-{% else %}
-<div class="empty-state">
-    <p>No hay perfiles de candidatos registrados.</p>
-</div>
-{% endfor %}
-
-<!-- ── Gestión de Portales (global) ── -->
-{% if request.query_params.get('msg') %}
-<div class="alert-success" style="margin:1rem 0">✅ {{ request.query_params.get('msg')|replace('+', ' ') }}</div>
-{% endif %}
-
-<div class="keywords-section" style="margin-top:2rem">
-    <h3>🌍 Gestión de Portales</h3>
-    <p class="keywords-desc">
-        Activa o desactiva los portales donde el bot busca empleos.
-        También puedes disparar un escaneo inmediato por portal.
-    </p>
-
-    <div class="site-toggle-grid">
-        {% for site in site_configs %}
-        <div class="site-toggle-item">
-            <span class="site-name">{{ site.site_name | capitalize }}</span>
-            <div class="site-actions">
-                <form action="/settings/toggle-site/{{ site.site_name }}" method="post">
-                    <button type="submit" class="toggle-btn {% if site.is_enabled %}active{% endif %}">
-                        {% if site.is_enabled %}✅ Activo{% else %}⏸ Inactivo{% endif %}
-                    </button>
-                </form>
-                <form action="/settings/scan-site/{{ site.site_name }}" method="post">
-                    <button type="submit" class="btn-scan" title="Escanear ahora">
-                        🔍 Escanear
+    <!-- ── Gestión de Portales ── -->
+    <div class="keywords-section" style="margin-top:0">
+        <h3>🌍 Gestión de Portales</h3>
+        <p class="keywords-desc">
+            Activa o desactiva portales y dispara escaneos manuales específicos para este candidato.
+            También puedes reintentar postulaciones rechazadas.
+        </p>
+        <div class="site-toggle-grid">
+            {% for site in site_configs %}
+            <div class="site-toggle-item">
+                <span class="site-name"><span class="site-badge badge-{{ site.site_name|lower }}">{{ site.site_name | capitalize }}</span></span>
+                <div class="site-actions">
+                    <form action="/settings/toggle-site/{{ site.site_name }}" method="post">
+                        <button type="submit" class="toggle-btn {% if site.is_enabled %}active{% endif %}">
+                            {% if site.is_enabled %}✅ Activo{% else %}⏸ Inactivo{% endif %}
+                        </button>
+                    </form>
+                    <form action="/settings/scan-site/{{ site.site_name }}/{{ active_pid }}" method="post">
+                        <button type="submit" class="btn-scan" title="Escanear este portal ahora">
+                            🔍 Escanear
+                        </button>
+                    </form>
+                </div>
+                <!-- Reintentar rechazados de este portal para este candidato -->
+                <form method="post" action="/reintentar-rechazados" style="margin-top:.5rem;width:100%">
+                    <input type="hidden" name="site" value="{{ site.site_name }}">
+                    <input type="hidden" name="profile_id" value="{{ active_pid }}">
+                    <button type="submit" class="btn-retry" style="font-size:.75rem;padding:5px 10px;width:100%">
+                        🔄 Reintentar Rechazados
                     </button>
                 </form>
             </div>
+            {% endfor %}
         </div>
-        {% endfor %}
+
+        <!-- Reintentar TODOS los rechazados de este candidato -->
+        <form method="post" action="/reintentar-rechazados" style="margin-top:1rem">
+            <input type="hidden" name="profile_id" value="{{ active_pid }}">
+            <button type="submit" class="btn-retry btn-retry-all" style="width:auto">
+                🔄 Reintentar Todos los Rechazados ({{ active_profile.name.split()[0] }})
+            </button>
+        </form>
+    </div>
+
+    <!-- ── Credenciales por portal ── -->
+    <div class="keywords-section" style="margin-top:0">
+        <h3>🔐 Credenciales por Portal</h3>
+        <p class="keywords-desc">Email y contraseña que usa este candidato en cada portal de empleo.</p>
+        <form method="post" action="/profile/{{ active_pid }}/credentials/update" id="credentials-form">
+            <div class="credentials-grid">
+                {% for portal in portales %}
+                {% set cred = profile_credentials.get(portal, {}) %}
+                <div class="credential-card">
+                    <div class="credential-header">
+                        <span class="site-badge badge-{{ portal }}">{{ portal | capitalize }}</span>
+                    </div>
+                    <div class="form-group" style="margin-top:.75rem">
+                        <label>Email</label>
+                        <input class="form-input" type="email" name="email_{{ portal }}"
+                               value="{{ cred.get('email', '') if cred else '' }}"
+                               placeholder="correo@ejemplo.com">
+                    </div>
+                    <div class="form-group" style="margin-top:.5rem">
+                        <label>Contraseña</label>
+                        <div style="position:relative">
+                            <input class="form-input" type="password" name="password_{{ portal }}"
+                                   id="pwd-{{ portal }}"
+                                   value="{{ cred.get('password', '') if cred else '' }}"
+                                   placeholder="••••••••">
+                            <button type="button" onclick="togglePwd('pwd-{{ portal }}')"
+                                    class="btn-toggle-pwd">👁</button>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            <div style="margin-top:1.25rem">
+                <button type="submit" class="btn btn-apply">🔒 Guardar Credenciales</button>
+            </div>
+        </form>
+    </div>
+
+</div><!-- end profile-card -->
+{% endif %}
+{% endif %}
+
+<!-- ── Modal: Subir CV con IA ── -->
+<div id="cv-modal" class="modal-overlay" style="display:none" onclick="closeCvModal(event)">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3>📄 Subir CV y Extraer Datos con IA</h3>
+            <button class="modal-close" onclick="closeCvModal(null)">✕</button>
+        </div>
+        <p style="color:#666;font-size:.9rem;margin-bottom:1rem">
+            Sube el PDF del CV y la IA extraerá automáticamente los datos del perfil.
+            Podrás revisar y editar antes de guardar.
+        </p>
+        <div id="cv-upload-area" class="cv-upload-area">
+            <input type="file" id="cv-file-input" accept=".pdf" onchange="handleCvFile(this)">
+            <label for="cv-file-input" class="cv-upload-label">
+                <span id="cv-upload-icon">📁</span>
+                <span id="cv-upload-text">Haz clic o arrastra el PDF aquí</span>
+            </label>
+        </div>
+        <div id="cv-loading" style="display:none;text-align:center;padding:1.5rem">
+            <div class="cv-spinner"></div>
+            <p style="margin-top:.75rem;color:#555">Analizando CV con IA...</p>
+        </div>
+        <div id="cv-result" style="display:none">
+            <div class="cv-result-header">✅ Datos extraídos — revisa y edita antes de guardar</div>
+            <div class="cv-result-preview" id="cv-result-preview"></div>
+            <div style="display:flex;gap:.75rem;margin-top:1rem">
+                <button class="btn btn-apply" onclick="applyCvData()">✅ Aplicar al Formulario</button>
+                <button class="btn btn-ignore" onclick="resetCvModal()">🔄 Cargar otro PDF</button>
+            </div>
+        </div>
+        <div id="cv-error" style="display:none;color:#c0392b;padding:.75rem;background:#fee;border-radius:6px;margin-top:.75rem"></div>
     </div>
 </div>
 
+<script>
+// ─── Tabs: refrescar contador de candidatos ─────────────────────
+
+// ─── Toggle contraseña ─────────────────────────────────────────
+function togglePwd(id) {
+    const inp = document.getElementById(id);
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+// ─── Modal CV ─────────────────────────────────────────────────
+let extractedCvData = null;
+
+function openCvModal() {
+    document.getElementById('cv-modal').style.display = 'flex';
+}
+
+function closeCvModal(e) {
+    if (!e || e.target === document.getElementById('cv-modal')) {
+        document.getElementById('cv-modal').style.display = 'none';
+        resetCvModal();
+    }
+}
+
+function resetCvModal() {
+    document.getElementById('cv-file-input').value = '';
+    document.getElementById('cv-upload-icon').textContent = '📁';
+    document.getElementById('cv-upload-text').textContent = 'Haz clic o arrastra el PDF aquí';
+    document.getElementById('cv-loading').style.display = 'none';
+    document.getElementById('cv-result').style.display = 'none';
+    document.getElementById('cv-error').style.display = 'none';
+    document.getElementById('cv-upload-area').style.display = 'block';
+    extractedCvData = null;
+}
+
+async function handleCvFile(input) {
+    const file = input.files[0];
+    if (!file) return;
+    document.getElementById('cv-upload-icon').textContent = '📄';
+    document.getElementById('cv-upload-text').textContent = file.name;
+    document.getElementById('cv-loading').style.display = 'block';
+    document.getElementById('cv-upload-area').style.display = 'none';
+    document.getElementById('cv-error').style.display = 'none';
+
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+        const res = await fetch('/api/parse-cv', { method: 'POST', body: formData });
+        const json = await res.json();
+        document.getElementById('cv-loading').style.display = 'none';
+        if (json.ok && json.data) {
+            extractedCvData = json.data;
+            renderCvPreview(json.data);
+            document.getElementById('cv-result').style.display = 'block';
+        } else {
+            showCvError(json.error || 'Error desconocido');
+        }
+    } catch (err) {
+        document.getElementById('cv-loading').style.display = 'none';
+        showCvError('Error de red: ' + err.message);
+    }
+}
+
+function renderCvPreview(data) {
+    const labels = {
+        name: 'Nombre', email: 'Email', phone: 'Teléfono', location: 'Ubicación',
+        birth_date: 'Fecha nac.', civil_status: 'Est. civil', address: 'Dirección',
+        education: 'Educación', experience: 'Experiencia', skills: 'Habilidades',
+        languages: 'Idiomas', salary_expectation: 'Salario esperado',
+        availability: 'Disponibilidad', about: 'Perfil profesional'
+    };
+    let html = '<div class="cv-preview-grid">';
+    for (const [key, label] of Object.entries(labels)) {
+        const val = data[key] || '';
+        if (val) {
+            html += `<div class="cv-preview-field"><strong>${label}:</strong><span>${val}</span></div>`;
+        }
+    }
+    html += '</div>';
+    document.getElementById('cv-result-preview').innerHTML = html;
+}
+
+function applyCvData() {
+    if (!extractedCvData) return;
+    const map = {
+        name: 'field-name', email: null, phone: 'field-phone', location: 'field-location',
+        birth_date: 'field-birth_date', civil_status: 'field-civil_status', address: 'field-address',
+        education: 'field-education', experience: 'field-experience', skills: 'field-skills',
+        languages: 'field-languages', salary_expectation: 'field-salary_expectation',
+        availability: 'field-availability', about: 'field-about'
+    };
+    for (const [key, fieldId] of Object.entries(map)) {
+        if (!fieldId) continue;
+        const el = document.getElementById(fieldId);
+        if (el && extractedCvData[key]) {
+            el.value = extractedCvData[key];
+        }
+    }
+    document.getElementById('cv-modal').style.display = 'none';
+    // Scroll al formulario
+    document.getElementById('profileForm-{{ active_pid }}').scrollIntoView({behavior:'smooth'});
+    // Destacar brevemente los campos rellenos
+    Object.values(map).forEach(id => {
+        if (!id) return;
+        const el = document.getElementById(id);
+        if (el) {
+            el.style.transition = 'background 0.5s';
+            el.style.background = '#d4f1d4';
+            setTimeout(() => el.style.background = '', 2000);
+        }
+    });
+}
+
+function showCvError(msg) {
+    const el = document.getElementById('cv-error');
+    el.textContent = '❌ ' + msg;
+    el.style.display = 'block';
+    document.getElementById('cv-upload-area').style.display = 'block';
+}
+
+// Drag & drop sobre el área de carga
+const uploadArea = document.getElementById('cv-upload-area');
+if (uploadArea) {
+    uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('drag-over'); });
+    uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag-over'));
+    uploadArea.addEventListener('drop', e => {
+        e.preventDefault();
+        uploadArea.classList.remove('drag-over');
+        const file = e.dataTransfer.files[0];
+        if (file && file.type === 'application/pdf') {
+            const input = document.getElementById('cv-file-input');
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            input.files = dt.files;
+            handleCvFile(input);
+        }
+    });
+}
+</script>
 {% endblock %}
