@@ -17,6 +17,7 @@ class AcciontrabajoScraper(BaseScraper):
         page.set_default_timeout(PLAYWRIGHT_TIMEOUT)
 
         try:
+            import urllib.parse
             keywords = await self._get_keywords()
             if not keywords:
                 logger.warning(f"[{self.site_name}] No se encontraron keywords para escaneo.")
@@ -24,13 +25,19 @@ class AcciontrabajoScraper(BaseScraper):
 
             for keyword in keywords:
                 # URL búsqueda: https://ni.acciontrabajo.com/buscar?q={keyword}&l=Nicaragua
-                search_url = f"{self.base_url}buscar?q={keyword.replace(' ', '+')}&l=Nicaragua"
+                q_encoded = urllib.parse.quote(keyword)
+                search_url = f"{self.base_url}buscar?q={q_encoded}&l=Nicaragua"
                 
                 logger.info(f"[{self.site_name}] Escaneando keyword: {keyword} -> {search_url}")
                 
                 try:
                     await page.goto(search_url, wait_until="networkidle", timeout=60000)
-                    await asyncio.sleep(3)
+                    await asyncio.sleep(5)
+                    
+                    # DEBUG: Screenshot
+                    debug_path = f"logs/debug_search_{keyword}.png"
+                    await page.screenshot(path=debug_path)
+                    logger.info(f"[{self.site_name}] DEBUG: Screenshot guardada en {debug_path}")
 
                     # Selector confirmado: .vacancy_card
                     cards = await page.query_selector_all(".vacancy_card")
@@ -115,9 +122,11 @@ if __name__ == "__main__":
     from playwright.async_api import async_playwright
     async def test():
         async with async_playwright() as p:
-            # Forzamos headless=False para ver qué pasa en el navegador (si el entorno lo permite)
-            # O simplemente usamos el default del scraper
             s = AcciontrabajoScraper()
+            # Forzamos una keyword simple para test repentino
+            s._get_keywords = lambda: asyncio.Future()
+            s._get_keywords().set_result(["ventas"])
+            
             jobs = await s.scrape(p)
             for j in jobs[:5]:
                 print(f"DEBUG: Found {j['title']} at {j['url']} (Location: {j['location']})")
