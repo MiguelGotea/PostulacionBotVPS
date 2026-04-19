@@ -3,7 +3,7 @@ module.exports = {
     {
       name: "postulacion-bot",
       script: "/root/postulacion-bot/venv/bin/python3",
-      args: "main.py",
+      args: "src/main.py",
       cwd: "/root/postulacion-bot",
       interpreter: "none",
       watch: false,
@@ -12,7 +12,7 @@ module.exports = {
       max_restarts: 10,
       env: {
         PYTHONUNBUFFERED: "1",
-        PYTHONPATH: "/root/postulacion-bot"
+        PYTHONPATH: "/root/postulacion-bot/src"
       },
       error_file: "/root/postulacion-bot/logs/error.log",
       out_file: "/root/postulacion-bot/logs/output.log",

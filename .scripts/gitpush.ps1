@@ -1,5 +1,5 @@
-# Auto-navegar a la raíz de PostulacionBotVPS
-Set-Location $PSScriptRoot
+# Auto-navegar a la raíz de PostulacionBotVPS (un nivel arriba de .scripts)
+Set-Location (Split-Path $PSScriptRoot -Parent)
 
 # Script de Empuje Tanque v1.1 - PostulacionBot
 Write-Host "Iniciando proceso de envio para PostulacionBot..." -ForegroundColor Cyan

@@ -24,39 +24,23 @@ Si no ves el prefijo `(venv)` o `(env)` en tu terminal, los comandos fallarán p
 
 ```
 PostulacionBotVPS/
-├── main.py                  # Punto de entrada del sistema
-├── scheduler.py             # Orquestador de ciclos de escaneo y postulación
-├── db.py                    # Inicialización y esquema de la base de datos SQLite
-├── config.py                # Credenciales, keywords, parámetros (NO se sube a GitHub)
-├── requirements.txt         # Dependencias Python
-├── ecosystem.config.js      # Configuración de PM2
-├── gitpush.ps1              # Script PowerShell de despliegue rápido (Windows)
-│
-├── scrapers/                # Módulos de búsqueda de empleos (Playwright)
-│   ├── base.py              # Clase base con lógica compartida de scraping
-│   ├── tecoloco.py          # Scraper de Tecoloco.com.ni
-│   ├── computrabajo.py      # Scraper de Computrabajo.com.ni
-│   ├── opcionempleo.py      # Scraper de OpcionEmpleo.com.ni
-│   ├── acciontrabajo.py     # Scraper de AccionTrabajo.com
-│   ├── encuentra24.py       # Scraper de Encuentra24.com
-│   └── linkedin.py          # Scraper de LinkedIn
-│
-├── poster/                  # Módulos de postulación automática (Playwright)
-│   ├── base.py              # Clase base con login, apply y mark_applied
-│   ├── tecoloco.py          # Flujo completo: Login orgánico + Cuestionario
-│   ├── computrabajo.py      # Postulación en Computrabajo
-│   ├── opcionempleo.py      # Postulación en OpcionEmpleo
-│   └── acciontrabajo.py     # Postulación en Acciontrabajo
-│
-├── dashboard/               # Interfaz Web (FastAPI + Jinja2)
-│   ├── app.py               # Rutas del Dashboard
-│   ├── templates/           # Plantillas HTML (Nuevas Ofertas, Postuladas, Config)
-│   └── static/              # CSS, JS del Dashboard
-│
+├── .scripts/
+│   └── gitpush.ps1          # Script PowerShell de despliegue rápido (Windows)
+├── src/                     # Código fuente del sistema
+│   ├── main.py              # Punto de entrada del sistema
+│   ├── scheduler.py         # Orquestador de ciclos de escaneo y postulación
+│   ├── db.py                # Inicialización y esquema de la base de datos SQLite
+│   ├── config.py            # Credenciales, keywords, parámetros (NO se sube a GitHub)
+│   ├── ai_filter.py         # Filtro inteligente de ofertas
+│   ├── scrapers/            # Módulos de búsqueda de empleos (Playwright)
+│   ├── poster/              # Módulos de postulación automática (Playwright)
+│   ├── dashboard/           # Interfaz Web (FastAPI + Jinja2)
+│   └── utils/               # Utilidades compartidas
 ├── data/
 │   └── jobs.db              # Base de datos SQLite (No en GitHub)
-│
-└── logs/                    # Logs de PM2 (No en GitHub)
+├── logs/                    # Logs de PM2 (No en GitHub)
+├── requirements.txt         # Dependencias Python
+└── ecosystem.config.js      # Configuración de PM2
 ```
 
 ---
@@ -143,7 +127,8 @@ playwright install-deps chromium
 nano config.py
 
 # 5. Inicializar la base de datos
-python3 db.py
+export PYTHONPATH=$PYTHONPATH:$(pwd)/src
+python3 src/db.py
 
 # 6. Arrancar con PM2
 pm2 start ecosystem.config.js
@@ -157,7 +142,7 @@ pm2 startup
 
 El proyecto usa **GitHub Actions** (`.github/workflows/deploy.yml`) para despliegue continuo:
 
-1. **Desde Windows:** Ejecutar `.\gitpush.ps1` en PowerShell.
+1. **Desde Windows:** Ejecutar `.\.scripts\gitpush.ps1` en PowerShell.
 2. El script hace commit, push y sincroniza con GitHub.
 3. GitHub Actions conecta al VPS por SSH y ejecuta `git pull` + `pm2 restart`.
 
